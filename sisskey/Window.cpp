@@ -2,4 +2,6 @@
 
 #ifdef _WIN64
 #include "WinAPI.inl"
-#endif // _WIN64
+#elif defined(__linux__)
+#include"XCB.inl"
+#endif

@@ -34,13 +34,11 @@ namespace sisskey
 		xcb_cursor_t m_NullCursor{ XCB_NONE };
 
 		xcb_connection_t* m_pConnection{ nullptr };
-		// xcb_screen_t* m_pScreen{ nullptr }; // ??
 		xcb_window_t m_Window{};
 
 	public:
-		xcb_connection_t* GetXCBConnection() const noexcept { return m_pConnection; }
-		// xcb_screen_t* GetXCBScreen() const noexcept { return m_pScreen; } // ??
-		xcb_window_t GetXCBWindow() const noexcept { return m_Window; }
+		[[nodiscard]] xcb_connection_t* GetXCBConnection() const noexcept { return m_pConnection; }
+		[[nodiscard]] xcb_window_t GetXCBWindow() const noexcept { return m_Window; }
 	private:
 #endif
 
