@@ -1,10 +1,10 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <filesystem>
 
 namespace sisskey
 {
-
 	class Engine
 	{
 	private:
@@ -17,7 +17,9 @@ namespace sisskey
 		Engine(const Engine&) = delete;
 		Engine& operator=(const Engine&) = delete;
 
-		static void ParseCmdLine(std::vector<std::string>& args);
-	};
+		void ParseCmdLine(std::vector<std::string>& args);
+		void LoadSettings(std::filesystem::path settings);
 
+		void Initialize();
+	};
 }

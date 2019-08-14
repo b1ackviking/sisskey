@@ -19,15 +19,41 @@
     <Filter Include="Core\Engine">
       <UniqueIdentifier>{c372c051-02d3-490f-a2ed-8dae856b4be2}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\Timer">
+      <UniqueIdentifier>{232bb71f-2190-4d6b-83af-94f4e92b6ab5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Window">
+      <UniqueIdentifier>{88e94dff-9c93-4ed8-88e4-1ee3c39f716c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Window\Implementation">
+      <UniqueIdentifier>{b6ee6400-2cb2-4cee-91f6-1050e2984c8d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
       <Filter>Core\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Timer.cpp">
+      <Filter>Core\Timer</Filter>
+    </ClCompile>
+    <ClCompile Include="Window.cpp">
+      <Filter>Core\Window</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine.h">
       <Filter>Core\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="Timer.h">
+      <Filter>Core\Timer</Filter>
+    </ClInclude>
+    <ClInclude Include="Window.h">
+      <Filter>Core\Window</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="WinAPI.inl">
+      <Filter>Core\Window\Implementation</Filter>
+    </None>
   </ItemGroup>
 </Project>
