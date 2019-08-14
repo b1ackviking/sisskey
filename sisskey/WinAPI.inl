@@ -70,8 +70,8 @@ namespace sisskey
 		wc.cbClsExtra = 0;
 		wc.cbWndExtra = 0;
 		wc.hbrBackground = (HBRUSH)6;
-		wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-		wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+		wc.hCursor = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
+		wc.hIcon = LoadIconW(nullptr, reinterpret_cast<LPCWSTR>(IDI_APPLICATION));
 		wc.hIconSm = wc.hIcon;
 		wc.hInstance = m_hInstance;
 		wc.lpfnWndProc = m_StaticWndProc;
@@ -84,7 +84,7 @@ namespace sisskey
 
 		if (fullscreen)
 		{
-			DEVMODE dmScreenSettings;
+			DEVMODEW dmScreenSettings;
 			memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
 			dmScreenSettings.dmBitsPerPel = 32;
@@ -166,7 +166,7 @@ namespace sisskey
 		{
 			SetWindowLongW(m_hWnd, GWL_STYLE, dwStyle & ~(WS_OVERLAPPED | WS_BORDER | WS_SYSMENU | WS_MINIMIZEBOX | WS_CAPTION));
 
-			DEVMODE dmScreenSettings;
+			DEVMODEW dmScreenSettings;
 			memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
 			dmScreenSettings.dmBitsPerPel = 32;
