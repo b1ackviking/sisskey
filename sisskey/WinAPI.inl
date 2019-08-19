@@ -32,28 +32,26 @@ namespace sisskey
 		{
 		case WM_CLOSE: PostQuitMessage(0); return 0;
 
-		case WM_ACTIVATEAPP: (LOWORD(wParam) == WA_INACTIVE) ? (void)0 /*pause*/ : (void)0 /*resume*/; return 0;
+		case WM_ACTIVATEAPP: (LOWORD(wParam) == WA_INACTIVE) ? m_PMR = Window::PMResult::Pause : m_PMR = Window::PMResult::Resume; return 0;
 
 		default: return DefWindowProcW(hWnd, message, wParam, lParam);
 		}
 	}
 
-	bool Window::ProcessMessages() noexcept
+	Window::PMResult Window::ProcessMessages() noexcept
 	{
+		m_PMR = Window::PMResult::Nothing;
 		MSG msg{};
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
-			{
-				// signal quit
-				return false;
-			}
+				return Window::PMResult::Quit;
 
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 		}
 
-		return true;
+		return m_PMR;
 	}
 	
 	Window::Window(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)

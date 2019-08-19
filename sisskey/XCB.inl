@@ -9,8 +9,9 @@
 
 namespace sisskey
 {
-	bool Window::ProcessMessages() noexcept
+	Window::PMResult Window::ProcessMessages() noexcept
 	{
+		Window::PMResult res{ Window::PMResult::Nothing };
 		xcb_generic_event_t* event;
 
 		while (event = xcb_poll_for_event(m_pConnection))
@@ -21,7 +22,7 @@ namespace sisskey
 			case XCB_EXPOSE:
 				{
 					//xcb_expose_event_t* expose = reinterpret_cast<xcb_expose_event_t*>(event);
-					// resume
+					res = Window::PMResult::Resume;
 				} break;
 			case XCB_MOTION_NOTIFY:
 			{
@@ -51,21 +52,18 @@ namespace sisskey
 			case XCB_FOCUS_IN:
 				{
 					//xcb_focus_in_event_t* focus_in = reinterpret_cast<xcb_focus_in_event_t*>(event);
-					// resume
+					res = Window::PMResult::Resume;
 				} break;
 			case XCB_FOCUS_OUT:
 				{
 					//xcb_focus_out_event_t* focus_out = reinterpret_cast<xcb_focus_out_event_t*>(event);
-					// pause
+					res = Window::PMResult::Pause;
 				} break;
 			case XCB_CLIENT_MESSAGE:
 			{
 				xcb_client_message_event_t* message = reinterpret_cast<xcb_client_message_event_t*>(event);
-				if(message->data.data32[0] == m_CloseMessage)
-				{
-					free(event);
-					return false;
-				}
+				if (message->data.data32[0] == m_CloseMessage)
+					res = Window::PMResult::Quit;
 			} break;
 			default: break;
 			}
@@ -73,7 +71,7 @@ namespace sisskey
 			free (event);
 		}
 
-		return true;
+		return res;
 	}
 
 	Window::Window(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)

@@ -60,7 +60,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	engine.Initialize();
 
 	auto w = std::make_unique<sisskey::Window>();
-	while (w->ProcessMessages());
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
 	
 	return 0;
 }

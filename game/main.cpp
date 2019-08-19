@@ -20,7 +20,7 @@ int main(int argc, char** argv)
 	engine.Initialize();
 
 	auto w = std::make_unique<sisskey::Window>();
-	while (w->ProcessMessages());
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
 
 	return 0;
 }

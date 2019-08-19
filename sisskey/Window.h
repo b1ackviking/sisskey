@@ -15,11 +15,21 @@ namespace sisskey
 {
 	class Window
 	{
+	public:
+		enum class PMResult
+		{
+			Nothing,
+			Quit,
+			Pause,
+			Resume
+		};
+
 	private:
 #ifdef _WIN64
 		std::wstring m_WndClassName;
 		HWND m_hWnd{ nullptr };
 		HINSTANCE m_hInstance{ nullptr };
+		PMResult m_PMR{ PMResult::Nothing };
 
 	public:
 		[[nodiscard]] HWND GetHWND() const noexcept { return m_hWnd; }
@@ -50,9 +60,7 @@ namespace sisskey
 
 		// TODO: constness??
 
-		// TODO: should this function return enum value
-		// for Nothing, Quit, Pause, Resume??
-		[[nodiscard]] bool ProcessMessages() noexcept;
+		[[nodiscard]] PMResult ProcessMessages() noexcept;
 
 		void SetTitle(std::string_view title);
 		[[nodiscard]] std::string GetTitle() const;
