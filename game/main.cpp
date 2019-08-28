@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 	engine.LoadSettings(std::filesystem::current_path() / u8"settings.json");
 	engine.Initialize();
 
-	auto w = std::make_unique<sisskey::Window>();
+	auto w = sisskey::Window::Create();
 	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
 
 	return 0;

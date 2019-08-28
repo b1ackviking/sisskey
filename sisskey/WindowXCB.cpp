@@ -64,7 +64,6 @@ namespace sisskey
 				if (message->data.data32[0] == m_CloseMessage)
 					res = Window::PMResult::Quit;
 			} break;
-			default: break;
 			}
 
 			free(event);
@@ -246,7 +245,6 @@ namespace sisskey
 		xcb_map_window(m_pConnection, m_Window);
 
 		xcb_flush(m_pConnection);
-
 	}
 
 	WindowXCB::~WindowXCB()
