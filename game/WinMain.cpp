@@ -59,7 +59,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	engine.LoadSettings(std::filesystem::current_path() / u8"settings.json");
 	engine.Initialize();
 
-	auto w = std::make_unique<sisskey::Window>();
+	auto w = sisskey::Window::Create();
 	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
 	
 	return 0;

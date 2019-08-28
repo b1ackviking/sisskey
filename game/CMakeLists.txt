@@ -1,9 +1,9 @@
 project(game)
 
 if(UNIX)
-set(SOURCES main.cpp)
+	set(SOURCES main.cpp)
 elseif(WIN32)
-set(SOURCES WinMain.cpp)
+	set(SOURCES WinMain.cpp)
 endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})

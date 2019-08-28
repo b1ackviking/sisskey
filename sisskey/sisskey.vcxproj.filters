@@ -25,8 +25,11 @@
     <Filter Include="Core\Window">
       <UniqueIdentifier>{88e94dff-9c93-4ed8-88e4-1ee3c39f716c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Core\Window\Implementation">
-      <UniqueIdentifier>{b6ee6400-2cb2-4cee-91f6-1050e2984c8d}</UniqueIdentifier>
+    <Filter Include="Core\Window\WinAPI">
+      <UniqueIdentifier>{72b19a19-bb83-47af-afd9-c602e69f9d53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Window\XCB">
+      <UniqueIdentifier>{8273c0ed-f886-4b81-b9ca-c7765fa2a087}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -39,6 +42,12 @@
     <ClCompile Include="Window.cpp">
       <Filter>Core\Window</Filter>
     </ClCompile>
+    <ClCompile Include="WindowWinAPI.cpp">
+      <Filter>Core\Window\WinAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowXCB.cpp">
+      <Filter>Core\Window\XCB</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine.h">
@@ -50,14 +59,12 @@
     <ClInclude Include="Window.h">
       <Filter>Core\Window</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="WinAPI.inl">
-      <Filter>Core\Window\Implementation</Filter>
-    </None>
-    <None Include="XCB.inl">
-      <Filter>Core\Window\Implementation</Filter>
-    </None>
+    <ClInclude Include="WindowWinAPI.h">
+      <Filter>Core\Window\WinAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="WindowXCB.h">
+      <Filter>Core\Window\XCB</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt" />

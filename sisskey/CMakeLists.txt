@@ -1,11 +1,19 @@
 project(sisskey)
 
+# common source filess
 set(SOURCES Engine.h Engine.cpp Timer.h Timer.cpp Window.h Window.cpp)
+
+# platform specific source files
+if (UNIX)
+	set(SOURCES ${SOURCES} WindowXCB.h WindowXCB.cpp)
+elseif(WIN32)
+	set(SOURCES ${SOURCES} WindowWinAPI.h WindowWinAPI.cpp)
+endif()
 
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 if (UNIX)
-target_link_libraries(${PROJECT_NAME} xcb xcb-image)
+	target_link_libraries(${PROJECT_NAME} xcb xcb-image)
 endif()
 
 # find_package(Threads)

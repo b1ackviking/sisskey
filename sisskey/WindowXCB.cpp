@@ -1,15 +1,14 @@
-#pragma once
+#include "WindowXCB.h"
 
 #include <stdexcept>
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include "Window.h"
 #include <xcb/xcb_image.h>
 
 namespace sisskey
 {
-	Window::PMResult Window::ProcessMessages() noexcept
+	Window::PMResult WindowXCB::ProcessMessages() noexcept
 	{
 		Window::PMResult res{ Window::PMResult::Nothing };
 		xcb_generic_event_t* event;
@@ -20,45 +19,45 @@ namespace sisskey
 			switch (event->response_type & ~0x80)
 			{
 			case XCB_EXPOSE:
-				{
-					//xcb_expose_event_t* expose = reinterpret_cast<xcb_expose_event_t*>(event);
-					res = Window::PMResult::Resume;
-				} break;
+			{
+				//xcb_expose_event_t* expose = reinterpret_cast<xcb_expose_event_t*>(event);
+				res = Window::PMResult::Resume;
+			} break;
 			case XCB_MOTION_NOTIFY:
 			{
 				//xcb_motion_notify_event_t* motion = reinterpret_cast<xcb_motion_notify_event_t*>(event);
 
 			} break;
 			case XCB_BUTTON_PRESS:
-				{
-					//xcb_button_press_event_t* press = reinterpret_cast<xcb_button_press_event_t*>(event);
+			{
+				//xcb_button_press_event_t* press = reinterpret_cast<xcb_button_press_event_t*>(event);
 
-				} break;
+			} break;
 			case XCB_BUTTON_RELEASE:
-				{
-					//xcb_button_release_event_t* release = reinterpret_cast<xcb_button_press_event_t*>(event);
+			{
+				//xcb_button_release_event_t* release = reinterpret_cast<xcb_button_press_event_t*>(event);
 
-				} break;
+			} break;
 			case XCB_KEY_PRESS:
-				{
-					//xcb_key_press_event_t* press = reinterpret_cast<xcb_key_press_event_t*>(event);
+			{
+				//xcb_key_press_event_t* press = reinterpret_cast<xcb_key_press_event_t*>(event);
 
-				} break;
+			} break;
 			case XCB_KEY_RELEASE:
-				{
-					//xcb_key_release_event_t* release = reinterpret_cast<xcb_key_release_event_t*>(event);
+			{
+				//xcb_key_release_event_t* release = reinterpret_cast<xcb_key_release_event_t*>(event);
 
-				} break;
+			} break;
 			case XCB_FOCUS_IN:
-				{
-					//xcb_focus_in_event_t* focus_in = reinterpret_cast<xcb_focus_in_event_t*>(event);
-					res = Window::PMResult::Resume;
-				} break;
+			{
+				//xcb_focus_in_event_t* focus_in = reinterpret_cast<xcb_focus_in_event_t*>(event);
+				res = Window::PMResult::Resume;
+			} break;
 			case XCB_FOCUS_OUT:
-				{
-					//xcb_focus_out_event_t* focus_out = reinterpret_cast<xcb_focus_out_event_t*>(event);
-					res = Window::PMResult::Pause;
-				} break;
+			{
+				//xcb_focus_out_event_t* focus_out = reinterpret_cast<xcb_focus_out_event_t*>(event);
+				res = Window::PMResult::Pause;
+			} break;
 			case XCB_CLIENT_MESSAGE:
 			{
 				xcb_client_message_event_t* message = reinterpret_cast<xcb_client_message_event_t*>(event);
@@ -68,13 +67,13 @@ namespace sisskey
 			default: break;
 			}
 
-			free (event);
+			free(event);
 		}
 
 		return res;
 	}
 
-	Window::Window(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
+	WindowXCB::WindowXCB(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
 	{
 		// Unpack parameters
 		auto [width, height] = size;
@@ -91,7 +90,7 @@ namespace sisskey
 		xcb_screen_t* pScreen = xcb_setup_roots_iterator(xcb_get_setup(m_pConnection)).data;
 
 		// https://github.com/Medium/phantomjs-1/blob/master/src/qt/qtbase/src/plugins/platforms/xcb/qxcbcursor.cpp
-		std::uint8_t cur_blank_bits[] {
+		std::uint8_t cur_blank_bits[]{
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -128,7 +127,7 @@ namespace sisskey
 		} xcb_cw_t;
 		*/
 		std::uint32_t mask{ XCB_CW_BACK_PIXMAP | XCB_CW_BORDER_PIXEL | XCB_CW_BIT_GRAVITY | XCB_CW_BACKING_STORE | XCB_CW_EVENT_MASK | XCB_CW_CURSOR };
-		std::uint32_t values[] { XCB_NONE,
+		std::uint32_t values[]{ XCB_NONE,
 								0,
 								XCB_GRAVITY_BIT_FORGET,
 								XCB_BACKING_STORE_NOT_USEFUL,
@@ -175,7 +174,7 @@ namespace sisskey
 			prop = reply->atom;
 			reply = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
 			state = reply->atom;
-			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, prop, XCB_ATOM_ATOM, 32, 1, (const void *)&state);
+			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, prop, XCB_ATOM_ATOM, 32, 1, (const void*)& state);
 		}
 
 		enum
@@ -212,12 +211,13 @@ namespace sisskey
 		hints.min_height = height;
 		hints.max_height = height;
 
+		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
 							XCB_ATOM_WM_NORMAL_HINTS,
 							XCB_ATOM_WM_SIZE_HINTS,
 							32, sizeof(hints) / 4, &hints);
 
-
+		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
 							XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, static_cast<std::uint32_t>(title.size()), title.data());
 
@@ -249,27 +249,27 @@ namespace sisskey
 
 	}
 
-	Window::~Window()
+	WindowXCB::~WindowXCB()
 	{
 		UseSystemCursor(true);
-		if(m_NullCursor)
+		if (m_NullCursor)
 			xcb_free_cursor(m_pConnection, m_NullCursor);
 		xcb_destroy_window(m_pConnection, m_Window);
 		xcb_disconnect(m_pConnection);
 	}
 
-	void Window::SetTitle(std::string_view title)
+	void WindowXCB::SetTitle(std::string_view title)
 	{
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
 							XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, static_cast<std::uint32_t>(title.size()), title.data());
 	}
 
-	std::string Window::GetTitle() const
+	std::string WindowXCB::GetTitle() const
 	{
 		std::string result{};
 		xcb_get_property_cookie_t cookie = xcb_get_property(m_pConnection, 0, m_Window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 0, 100);
 		xcb_get_property_reply_t* reply = xcb_get_property_reply(m_pConnection, cookie, nullptr);
-		if(reply)
+		if (reply)
 		{
 			result = (char*)xcb_get_property_value(reply);
 			free(reply);
@@ -278,9 +278,9 @@ namespace sisskey
 		return result;
 	}
 
-	void Window::UseSystemCursor(bool use) noexcept
+	void WindowXCB::UseSystemCursor(bool use) noexcept
 	{
-		if(use)
+		if (use)
 		{
 			std::uint32_t value{ XCB_CURSOR_NONE };
 			xcb_change_window_attributes(m_pConnection, m_Window, XCB_CW_CURSOR, &value);
@@ -288,7 +288,7 @@ namespace sisskey
 		else xcb_change_window_attributes(m_pConnection, m_Window, XCB_CW_CURSOR, &m_NullCursor);
 	}
 
-	void Window::ChangeResolution(std::pair<int, int> size, bool fullscreen)
+	void WindowXCB::ChangeResolution(std::pair<int, int> size, bool fullscreen)
 	{
 		auto [width, height] = size;
 

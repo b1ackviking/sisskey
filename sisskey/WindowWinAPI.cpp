@@ -1,12 +1,11 @@
-#pragma once
+#include "WindowWinAPI.h"
 
 #include <stdexcept>
 #include <array>
-#include "Window.h"
 
 namespace sisskey
 {
-	LRESULT Window::m_StaticWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) noexcept
+	LRESULT WindowWinAPI::m_StaticWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) noexcept
 	{
 		if (message == WM_CREATE)
 		{
@@ -19,14 +18,14 @@ namespace sisskey
 		else
 		{
 			//retrieve the stored "this" pointer
-			Window* window = reinterpret_cast<Window*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+			WindowWinAPI* window = reinterpret_cast<WindowWinAPI*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
 			if (window != nullptr)
 				return window->WndProc(hWnd, message, wParam, lParam);
 		}
 		return DefWindowProcW(hWnd, message, wParam, lParam);
 	}
 
-	LRESULT Window::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) noexcept
+	LRESULT WindowWinAPI::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) noexcept
 	{
 		switch (message)
 		{
@@ -38,7 +37,7 @@ namespace sisskey
 		}
 	}
 
-	Window::PMResult Window::ProcessMessages() noexcept
+	Window::PMResult WindowWinAPI::ProcessMessages() noexcept
 	{
 		m_PMR = Window::PMResult::Nothing;
 		MSG msg{};
@@ -53,8 +52,8 @@ namespace sisskey
 
 		return m_PMR;
 	}
-	
-	Window::Window(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
+
+	WindowWinAPI::WindowWinAPI(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
 	{
 		// Unpack parameters
 		auto [width, height] = size;
@@ -92,7 +91,7 @@ namespace sisskey
 
 			ChangeDisplaySettingsW(&dmScreenSettings, CDS_FULLSCREEN);
 
-			m_hWnd = CreateWindowExW(0, m_WndClassName.c_str(), m_WndClassName.c_str(), WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE | WS_POPUP , 0, 0, width, height, nullptr, nullptr, m_hInstance, this);
+			m_hWnd = CreateWindowExW(0, m_WndClassName.c_str(), m_WndClassName.c_str(), WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE | WS_POPUP, 0, 0, width, height, nullptr, nullptr, m_hInstance, this);
 		}
 		else
 		{
@@ -118,7 +117,7 @@ namespace sisskey
 		UpdateWindow(m_hWnd);
 	}
 
-	Window::~Window()
+	WindowWinAPI::~WindowWinAPI()
 	{
 		UseSystemCursor(true);
 		ChangeDisplaySettingsW(nullptr, 0); // Restore display mode if changed
@@ -126,7 +125,7 @@ namespace sisskey
 		UnregisterClassW(m_WndClassName.c_str(), m_hInstance);
 	}
 
-	void Window::SetTitle(std::string_view title)
+	void WindowWinAPI::SetTitle(std::string_view title)
 	{
 		const int length = MultiByteToWideChar(CP_UTF8, 0, title.data(), static_cast<int>(title.length()), nullptr, 0);
 		std::wstring t(length, 0);
@@ -134,7 +133,7 @@ namespace sisskey
 		SetWindowTextW(m_hWnd, t.c_str());
 	}
 
-	std::string Window::GetTitle() const
+	std::string WindowWinAPI::GetTitle() const
 	{
 		std::array<wchar_t, 128> buffer;
 		GetWindowTextW(m_hWnd, buffer.data(), static_cast<int>(buffer.size()));
@@ -146,7 +145,7 @@ namespace sisskey
 		return result;
 	}
 
-	void Window::UseSystemCursor(bool use) noexcept
+	void WindowWinAPI::UseSystemCursor(bool use) noexcept
 	{
 		if (use) while (ShowCursor(TRUE) < 0);
 		else while (ShowCursor(FALSE) >= 0);
@@ -155,7 +154,7 @@ namespace sisskey
 	// How do I switch a window between normal and fullscreen?
 	// Raymond Chen, 2010
 	// https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
-	void Window::ChangeResolution(std::pair<int, int> size, bool fullscreen)
+	void WindowWinAPI::ChangeResolution(std::pair<int, int> size, bool fullscreen)
 	{
 		auto [width, height] = size;
 		DWORD dwStyle = GetWindowLongW(m_hWnd, GWL_STYLE);
@@ -206,7 +205,7 @@ namespace sisskey
 
 			// Probably don't need this call
 			// SetWindowPos(m_hWnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-			
+
 			// Restore icon in titlebar
 			SendMessageW(m_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)IDI_APPLICATION);
 		}
