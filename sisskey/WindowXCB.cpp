@@ -64,7 +64,6 @@ namespace sisskey
 				if (message->data.data32[0] == m_CloseMessage)
 					res = Window::PMResult::Quit;
 			} break;
-			default: break;
 			}
 
 			free(event);
