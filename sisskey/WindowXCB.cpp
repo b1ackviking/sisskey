@@ -246,7 +246,6 @@ namespace sisskey
 		xcb_map_window(m_pConnection, m_Window);
 
 		xcb_flush(m_pConnection);
-
 	}
 
 	WindowXCB::~WindowXCB()
