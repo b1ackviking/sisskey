@@ -1,5 +1,9 @@
 project(sisskey)
 
+if(NOT CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE Release)
+endif()
+
 # common source filess
 set(SOURCES	Engine.h Engine.cpp
 			Timer.h Timer.cpp
@@ -19,6 +23,8 @@ add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 if (UNIX)
 	target_link_libraries(${PROJECT_NAME} xcb xcb-image)
+elseif(WIN32)
+	target_link_libraries(${PROJECT_NAME} d3d12.lib dxgi.lib)
 endif()
 
 # find_package(Threads)

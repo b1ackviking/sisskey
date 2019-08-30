@@ -14,6 +14,6 @@ namespace sisskey
 		GraphicsDeviceVulkan();
 		~GraphicsDeviceVulkan();
 
-
+		void Render() override {}
 	};
 }

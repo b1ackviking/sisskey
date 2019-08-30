@@ -1,5 +1,6 @@
 #include "../sisskey/Engine.h"
 #include "../sisskey/Window.h"
+#include "../sisskey/GraphicsDevice.h"
 
 #include <string>
 #include <sstream>
@@ -60,7 +61,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	engine.Initialize();
 
 	auto w = sisskey::Window::Create();
-	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
+	auto gd = sisskey::GraphicsDevice::Create(sisskey::Window::GetNativeHandle(w.get()),
+											  sisskey::GraphicsDevice::API::DX12);
+
+	while (gd->Render(), w->ProcessMessages() != sisskey::Window::PMResult::Quit);
 	
 	return 0;
 }

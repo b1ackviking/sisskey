@@ -19,8 +19,8 @@ namespace sisskey
 		GraphicsDevice(const GraphicsDevice&) = delete;
 		GraphicsDevice& operator=(const GraphicsDevice&) = delete;
 
-		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(API api = API::Vulkan);
+		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(std::shared_ptr<void> WindowHandle, API api = API::Vulkan);
 
-
+		virtual void Render() = 0;
 	};
 }
