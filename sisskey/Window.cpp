@@ -11,12 +11,12 @@
 
 namespace sisskey
 {
-	[[nodiscard]] std::unique_ptr<Window> Window::Create(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
+	[[nodiscard]] std::shared_ptr<Window> Window::Create(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor)
 	{
 #ifdef _WIN64
-		return std::make_unique<WindowWinAPI>(title, size, position, fullscreen, cursor);
+		return std::make_shared<WindowWinAPI>(title, size, position, fullscreen, cursor);
 #elif defined(__linux__)
-		return std::make_unique<WindowXCB>(title, size, position, fullscreen, cursor);
+		return std::make_shared<WindowXCB>(title, size, position, fullscreen, cursor);
 #endif
 	}
 

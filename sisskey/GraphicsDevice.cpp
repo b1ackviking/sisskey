@@ -6,16 +6,14 @@
 
 #include "GraphicsDeviceVulkan.h"
 
-#include <tuple>
-
 namespace sisskey
 {
-	[[nodiscard]] std::unique_ptr<GraphicsDevice> GraphicsDevice::Create(std::shared_ptr<void> WindowHandle, API api)
+	[[nodiscard]] std::unique_ptr<GraphicsDevice> GraphicsDevice::Create(std::shared_ptr<Window> window, PresentMode mode, API api)
 	{
-		assert(WindowHandle);
+		assert(window);
 #ifdef _WIN64
 		if (api == API::DX12)
-			return std::make_unique<GraphicsDeviceDX12>(std::get<0>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(WindowHandle)));
+			return std::make_unique<GraphicsDeviceDX12>(window, mode);
 #endif
 		return std::make_unique<GraphicsDeviceVulkan>();
 	}

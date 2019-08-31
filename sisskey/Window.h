@@ -32,7 +32,7 @@ namespace sisskey
 		virtual void UseSystemCursor(bool use) noexcept = 0;
 		virtual void ChangeResolution(std::pair<int, int> size, bool fullscreen) = 0;
 
-		[[nodiscard]] static std::unique_ptr<Window> Create(std::string_view title = u8"sisskey",
+		[[nodiscard]] static std::shared_ptr<Window> Create(std::string_view title = u8"sisskey",
 															std::pair<int, int> size = { 1280, 720 },
 															std::pair<int, int> position = { -1,-1 },
 															bool fullscreen = false,

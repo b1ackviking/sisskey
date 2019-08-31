@@ -4,6 +4,7 @@
 
 namespace sisskey
 {
+	class Window;
 	class GraphicsDevice
 	{
 	public:
@@ -12,6 +13,12 @@ namespace sisskey
 			Vulkan,
 			DX12
 		};
+		enum class PresentMode
+		{
+			Windowed,
+			Borderless,
+			Fullscreen
+		};
 	protected:
 		GraphicsDevice() = default;
 	public:
@@ -19,7 +26,7 @@ namespace sisskey
 		GraphicsDevice(const GraphicsDevice&) = delete;
 		GraphicsDevice& operator=(const GraphicsDevice&) = delete;
 
-		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(std::shared_ptr<void> WindowHandle, API api = API::Vulkan);
+		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(std::shared_ptr<Window> window, PresentMode mode = PresentMode::Windowed, API api = API::Vulkan);
 
 		virtual void Render() = 0;
 	};

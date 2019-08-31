@@ -82,11 +82,11 @@ namespace sisskey
 		if (fullscreen)
 		{
 			DEVMODEW dmScreenSettings;
-			memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
+			std::memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
 			dmScreenSettings.dmBitsPerPel = 32;
-			dmScreenSettings.dmPelsWidth = (DWORD)width;
-			dmScreenSettings.dmPelsHeight = (DWORD)height;
+			dmScreenSettings.dmPelsWidth = static_cast<DWORD>(width);
+			dmScreenSettings.dmPelsHeight = static_cast<DWORD>(height);
 			dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
 
 			ChangeDisplaySettingsW(&dmScreenSettings, CDS_FULLSCREEN);
@@ -164,11 +164,11 @@ namespace sisskey
 			SetWindowLongW(m_hWnd, GWL_STYLE, dwStyle & ~(WS_OVERLAPPED | WS_BORDER | WS_SYSMENU | WS_MINIMIZEBOX | WS_CAPTION));
 
 			DEVMODEW dmScreenSettings;
-			memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
+			std::memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
 			dmScreenSettings.dmBitsPerPel = 32;
-			dmScreenSettings.dmPelsWidth = (DWORD)width;
-			dmScreenSettings.dmPelsHeight = (DWORD)height;
+			dmScreenSettings.dmPelsWidth = static_cast<DWORD>(width);
+			dmScreenSettings.dmPelsHeight = static_cast<DWORD>(height);
 			dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
 
 			ChangeDisplaySettingsW(&dmScreenSettings, CDS_FULLSCREEN);

@@ -1,22 +1,63 @@
 #include "GraphicsDeviceDX12.h"
+#include "Window.h"
 
 #include "d3dx12.h"
 #include <DirectXColors.h>
 
 #include <stdexcept>
+#include <array>
 #include <vector>
 #include <string>
 #include <cassert>
 
 namespace sisskey
 {
-	GraphicsDeviceDX12::GraphicsDeviceDX12(HWND hWnd)
+	// https://www.3dgep.com/learning-directx-12-1/#Query_DirectX_12_Adapter
+	// https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12createdevice
+	Microsoft::WRL::ComPtr<IDXGIAdapter4> GraphicsDeviceDX12::m_GetAdapter()
 	{
-		UINT FactoryCreateFlags{};
+		Microsoft::WRL::ComPtr<IDXGIAdapter4> ret;
+
+		// Try to select a discrete GPU that supports DX12
+		// and has maximum VRAM
+		SIZE_T maxDedicatedVideoMemory{};
+		Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+		for (UINT i{}; m_pFactory->EnumAdapters1(i, &adapter) == S_OK; ++i)
+		{
+			DXGI_ADAPTER_DESC1 desc;
+			adapter->GetDesc1(&desc);
+
+			// Check to see if the adapter can create a D3D12 device without actually 
+			// creating it. The adapter with the largest dedicated video memory is favored.
+			if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 &&
+				SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, __uuidof(ID3D12Device), nullptr)) &&
+				desc.DedicatedVideoMemory > maxDedicatedVideoMemory)
+			{
+				maxDedicatedVideoMemory = desc.DedicatedVideoMemory;
+				ThrowIfFailed(adapter.As(&ret));
+			}
+		}
+
+		// TODO: log
+		// Fallback to WARP adapter
+		if (!ret)
+		{
+			Microsoft::WRL::ComPtr<IDXGIAdapter> pWarpAdapter;
+			ThrowIfFailed(m_pFactory->EnumWarpAdapter(IID_PPV_ARGS(&pWarpAdapter)));
+			ThrowIfFailed(pWarpAdapter.As(&ret));
+		}
+
+		return ret;
+	}
+
+	// TODO: DXGI factory is needed only for initialization?
+	GraphicsDeviceDX12::GraphicsDeviceDX12(std::shared_ptr<Window> window, PresentMode mode)
+		: m_pWindow{ window }
+		, m_PresentMode{ mode }
+	{
 #ifndef NDEBUG
 		{
-			FactoryCreateFlags |= DXGI_CREATE_FACTORY_DEBUG;
-			Microsoft::WRL::ComPtr<ID3D12Debug3> Debug;
+			Microsoft::WRL::ComPtr<ID3D12Debug> Debug;
 			ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&Debug)));
 			Debug->EnableDebugLayer();
 		}
@@ -25,96 +66,55 @@ namespace sisskey
 		// Create DXGI Factory
 		{
 			Microsoft::WRL::ComPtr<IDXGIFactory2> f2;
+			UINT FactoryCreateFlags{};
+#ifndef NDEBUG
+			FactoryCreateFlags |= DXGI_CREATE_FACTORY_DEBUG;
+#endif // !NDEBUG
 			ThrowIfFailed(CreateDXGIFactory2(FactoryCreateFlags, IID_PPV_ARGS(&f2)));
 			ThrowIfFailed(f2.As(&m_pFactory));
 		}
 
-		// TODO: store this information
-		// Enum adapters, outputs and present modes
-		{
-			Microsoft::WRL::ComPtr<IDXGIAdapter> a;
-			std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter4>> adapters;
-			for (UINT i{}; m_pFactory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&a)) == S_OK; ++i)
-			{
-				Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter;
-				ThrowIfFailed(a.As(&adapter));
-
-				DXGI_ADAPTER_DESC3 desc;
-				ThrowIfFailed(adapter->GetDesc3(&desc));
-
-				std::wstring text = L"***Adapter: ";
-				text += desc.Description;
-				text += L" Memory: ";
-				text += std::to_wstring(desc.DedicatedVideoMemory / 1024 / 1024);
-				text += L"\n";
-				OutputDebugStringW(text.c_str());
-
-				adapters.push_back(adapter);
-			}
-
-			std::vector<Microsoft::WRL::ComPtr<IDXGIOutput6>> outputs;
-			for (const auto& adapter : adapters)
-			{
-				Microsoft::WRL::ComPtr<IDXGIOutput> o;
-				for (UINT i{}; adapter->EnumOutputs(i, &o) == S_OK; ++i)
-				{
-					Microsoft::WRL::ComPtr<IDXGIOutput6> output;
-					ThrowIfFailed(o.As(&output));
-
-					DXGI_OUTPUT_DESC1 desc;
-					ThrowIfFailed(output->GetDesc1(&desc));
-
-					std::wstring text = L"***Output: ";
-					text += desc.DeviceName;
-					text += L"\n";
-					OutputDebugStringW(text.c_str());
-
-					outputs.push_back(output);
-				}
-			}
-
-			for (const auto& output : outputs)
-			{
-				UINT flags{ DXGI_ENUM_MODES_INTERLACED };
-				UINT count{};
-
-				ThrowIfFailed(output->GetDisplayModeList1(m_BackBufferFormat, flags, &count, nullptr));
-				std::vector<DXGI_MODE_DESC1> modes(count);
-				ThrowIfFailed(output->GetDisplayModeList1(m_BackBufferFormat, flags, &count, modes.data()));
-
-				for (const auto& mode : modes)
-				{
-					std::wstring text = L"Width = " +
-										std::to_wstring(mode.Width) +
-										L" " +
-										L"Height = " +
-										std::to_wstring(mode.Height) +
-										L" " +
-										L"Refresh = " +
-										std::to_wstring(mode.RefreshRate.Numerator) +
-										L"/" +
-										std::to_wstring(mode.RefreshRate.Denominator) +
-										L"\n";
-					OutputDebugStringW(text.c_str());
-				}
-			}
-		}
-		
-		// TODO: select adapter??
 		// Create Device
+		// https://www.3dgep.com/learning-directx-12-1/#Create_the_DirectX_12_Device
 		{
 			Microsoft::WRL::ComPtr<ID3D12Device> dev;
-			HRESULT hr = D3D12CreateDevice(nullptr, // default adapter
-										   D3D_FEATURE_LEVEL_12_0,
-										   IID_PPV_ARGS(&dev));
-			// Fallback to WARP device.
-			if (FAILED(hr))
-			{
-				Microsoft::WRL::ComPtr<IDXGIAdapter> pWarpAdapter;
-				ThrowIfFailed(m_pFactory->EnumWarpAdapter(IID_PPV_ARGS(&pWarpAdapter)));
-				ThrowIfFailed(D3D12CreateDevice(pWarpAdapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&dev)));
-			}
+			ThrowIfFailed(D3D12CreateDevice(m_GetAdapter().Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&dev)));
 			ThrowIfFailed(dev.As(&m_pDevice));
+
+#ifndef NDEBUG
+			Microsoft::WRL::ComPtr<ID3D12InfoQueue> pInfoQueue;
+			ThrowIfFailed(m_pDevice.As(&pInfoQueue));
+			pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+			pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+			pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
+
+			// Suppress whole categories of messages
+			std::array<D3D12_MESSAGE_CATEGORY, 0> Categories; // suppress no categories
+
+			// Suppress messages based on their severity level
+			std::array Severities
+			{
+				D3D12_MESSAGE_SEVERITY_INFO
+			};
+
+			// Suppress individual messages by their ID
+			std::array DenyIds // TODO: check if it's needed
+			{
+				D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,   // I'm really not sure how to avoid this message.
+				D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,                         // This warning occurs when using capture frame while graphics debugging.
+				D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,                       // This warning occurs when using capture frame while graphics debugging.
+			};
+
+			D3D12_INFO_QUEUE_FILTER NewFilter{};
+			NewFilter.DenyList.NumCategories = static_cast<UINT>(Categories.size());
+			NewFilter.DenyList.pCategoryList = Categories.data();
+			NewFilter.DenyList.NumSeverities = static_cast<UINT>(Severities.size());
+			NewFilter.DenyList.pSeverityList = Severities.data();
+			NewFilter.DenyList.NumIDs = static_cast<UINT>(DenyIds.size());
+			NewFilter.DenyList.pIDList = DenyIds.data();
+
+			ThrowIfFailed(pInfoQueue->PushStorageFilter(&NewFilter));
+#endif // !NDEBUG
 		}
 
 		// Create Fence
@@ -153,52 +153,7 @@ namespace sisskey
 			ThrowIfFailed(cl.As(&m_pCommandList));
 		}
 
-		// TODO: separate method
-		// Release the previous swapchain we will be recreating.
-		m_pSwapChain.Reset();
-		{
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_swap_chain_desc1
-			DXGI_SWAP_CHAIN_DESC1 sd;
-			sd.Width = 0;
-			sd.Height = 0;
-			// Note: the only supported formats with DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL are:
-			// DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM
-			sd.Format = m_BackBufferFormat;
-			sd.Stereo = FALSE;
-			// Multisampling is unsupported with DXGI_SWAP_EFFECT_FLIP_*
-			sd.SampleDesc.Count = 1;
-			sd.SampleDesc.Quality = 0;
-			sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-			sd.BufferCount = m_SwapChainBufferCount; // 2-16
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_scaling
-			sd.Scaling = DXGI_SCALING_STRETCH;
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_effect
-			sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; // TODO: discard?
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_alpha_mode
-			sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_chain_flag
-			sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING; // TODO: Check tearing support
-
-			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_swap_chain_fullscreen_desc
-			DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsd;
-			// TODO: Get refresh rate from present modes
-			fsd.RefreshRate.Numerator = 60;
-			fsd.RefreshRate.Denominator = 1;
-			fsd.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-			// https://docs.microsoft.com/ru-ru/previous-versions/windows/desktop/legacy/bb173066(v=vs.85)
-			fsd.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-			fsd.Windowed = TRUE; // TODO: ??
-
-			// https://docs.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgifactory2-createswapchainforhwnd
-			Microsoft::WRL::ComPtr<IDXGISwapChain1> sc;
-			ThrowIfFailed(m_pFactory->CreateSwapChainForHwnd(m_pCommandQueue.Get(), hWnd, &sd, &fsd, nullptr /* TODO: restrict to output?? */, &sc));
-			ThrowIfFailed(sc.As(&m_pSwapChain));
-
-			// Get width and height
-			ThrowIfFailed(m_pSwapChain->GetDesc1(&sd));
-			m_Width = sd.Width;
-			m_Height = sd.Height;
-		}
+		m_CreateSwapChain();
 
 		// Create descriptor heaps
 		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
@@ -227,7 +182,6 @@ namespace sisskey
 		}
 
 		// TODO: offscreen rendering
-		// TODO: final step does not need depth/stencil
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_effect
 		// To use multisampling with DXGI_SWAP_EFFECT_SEQUENTIAL or DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
 		// you must perform the multisampling in a separate render target.
@@ -313,9 +267,13 @@ namespace sisskey
 		// Add the command list to the queue for execution.
 		ID3D12CommandList* cmdsLists[] = { m_pCommandList.Get() };
 		m_pCommandQueue->ExecuteCommandLists(1, cmdsLists);
+
 		// swap the back and front buffers
-		ThrowIfFailed(m_pSwapChain->Present(0, 0));
-		m_CurrBackBuffer = (m_CurrBackBuffer + 1) % m_SwapChainBufferCount;
+		UINT SyncInterval{ m_VSync ? 1u : 0u };
+		// https://docs.microsoft.com/ru-ru/windows/win32/direct3ddxgi/dxgi-present
+		UINT Flags{ !m_VSync && m_TearingSupport && m_PresentMode != PresentMode::Fullscreen ? DXGI_PRESENT_ALLOW_TEARING : 0u }; // Note: VFR is not allowed in fullscreen mode
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present
+		ThrowIfFailed(m_pSwapChain->Present(SyncInterval, Flags));
 		// Wait until frame commands are complete. This waiting is
 		// inefficient and is done for simplicity. Later we will show how to
 		// organize our rendering code so we do not have to wait per frame.
@@ -326,7 +284,7 @@ namespace sisskey
 	{
 		// CD3DX12 constructor to offset to the RTV of the current back buffer.
 		return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart(), // handle start
-											 m_CurrBackBuffer, // index to offset
+											 m_pSwapChain->GetCurrentBackBufferIndex(), // index to offset
 											 m_RtvDescriptorSize); // byte size of descriptor
 	}
 
@@ -353,5 +311,212 @@ namespace sisskey
 			else
 				throw std::runtime_error{ u8"Failed to create EventHandle for DX12 Fence" };
 		}
+	}
+
+	std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter4>> GraphicsDeviceDX12::m_EnumerateAdapters()
+	{
+		Microsoft::WRL::ComPtr<IDXGIAdapter> a;
+		std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter4>> adapters;
+		for (UINT i{}; m_pFactory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&a)) == S_OK; ++i)
+		{
+			Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter;
+			ThrowIfFailed(a.As(&adapter));
+
+			DXGI_ADAPTER_DESC3 desc;
+			ThrowIfFailed(adapter->GetDesc3(&desc));
+
+			std::wstring text = L"***Adapter: ";
+			text += desc.Description;
+			text += L" Memory: ";
+			text += std::to_wstring(desc.DedicatedVideoMemory / 1024 / 1024);
+			desc.Flags& DXGI_ADAPTER_FLAG3_SOFTWARE ? text += L" SOFTWARE ADAPTER!" : text += L" PHYSICAL ADAPTER";
+			text += L"\n";
+			OutputDebugStringW(text.c_str());
+
+			adapters.push_back(adapter);
+		}
+
+		return adapters;
+	}
+
+	std::vector<Microsoft::WRL::ComPtr<IDXGIOutput6>> GraphicsDeviceDX12::m_EnumerateAdapterOutputs(Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter)
+	{
+		std::vector<Microsoft::WRL::ComPtr<IDXGIOutput6>> outputs;
+		Microsoft::WRL::ComPtr<IDXGIOutput> o;
+		for (UINT i{}; adapter->EnumOutputs(i, &o) == S_OK; ++i)
+		{
+			Microsoft::WRL::ComPtr<IDXGIOutput6> output;
+			ThrowIfFailed(o.As(&output));
+
+			DXGI_OUTPUT_DESC1 desc;
+			ThrowIfFailed(output->GetDesc1(&desc));
+
+			std::wstring text = L"***Output: ";
+			text += desc.DeviceName;
+			text += L"\n";
+			OutputDebugStringW(text.c_str());
+
+			outputs.push_back(output);
+		}
+
+		return outputs;
+	}
+
+	std::vector<DXGI_MODE_DESC1> GraphicsDeviceDX12::m_EnumerateDisplayModes(Microsoft::WRL::ComPtr<IDXGIOutput6> output)
+	{
+		UINT flags{ DXGI_ENUM_MODES_INTERLACED };
+		UINT count{};
+
+		ThrowIfFailed(output->GetDisplayModeList1(m_BackBufferFormat, flags, &count, nullptr));
+		std::vector<DXGI_MODE_DESC1> modes(count);
+		ThrowIfFailed(output->GetDisplayModeList1(m_BackBufferFormat, flags, &count, modes.data()));
+
+		for (const auto& mode : modes)
+		{
+			std::wstring text = L"Width = " +
+				std::to_wstring(mode.Width) +
+				L" " +
+				L"Height = " +
+				std::to_wstring(mode.Height) +
+				L" " +
+				L"Refresh = " +
+				std::to_wstring(mode.RefreshRate.Numerator) +
+				L"/" +
+				std::to_wstring(mode.RefreshRate.Denominator) +
+				L"\n";
+			OutputDebugStringW(text.c_str());
+		}
+
+		return modes;
+	}
+
+	Microsoft::WRL::ComPtr<IDXGIOutput6> GraphicsDeviceDX12::m_GetOutputFromWindow(HWND hWnd)
+	{
+		// assuming we want to get output of the window used by swap chain
+		if (m_pSwapChain)
+		{
+			Microsoft::WRL::ComPtr<IDXGIOutput> o;
+			ThrowIfFailed(m_pSwapChain->GetContainingOutput(&o));
+			Microsoft::WRL::ComPtr<IDXGIOutput6> r;
+			ThrowIfFailed(o.As(&r));
+			return r;
+		}
+
+		HMONITOR hMon = MonitorFromWindow(hWnd, MONITOR_DEFAULTTOPRIMARY);
+		auto adapters = m_EnumerateAdapters();
+		for (const auto& adapter : adapters)
+		{
+			auto outputs = m_EnumerateAdapterOutputs(adapter);
+			for (const auto& output : outputs)
+			{
+				DXGI_OUTPUT_DESC1 desc;
+				ThrowIfFailed(output->GetDesc1(&desc));
+
+				if (desc.Monitor == hMon)
+					return output;
+			}
+		}
+		
+		return {};
+	}
+
+	void GraphicsDeviceDX12::m_CreateSwapChain()
+	{
+		HWND hWnd = std::get<0>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(Window::GetNativeHandle(m_pWindow.get())));
+		int w{}, h{}, n{ 60 }, d{ 1 };
+
+		// Get window dimentions and refresh rate
+		{
+			auto output = m_GetOutputFromWindow(hWnd);
+			assert(output);
+
+			// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
+			RECT r;
+			GetClientRect(hWnd, &r);
+
+			DXGI_MODE_DESC in;
+			in.Width = r.right;
+			in.Height = r.bottom;
+			in.RefreshRate.Numerator = 0;
+			in.RefreshRate.Denominator = 0;
+			in.Format = m_BackBufferFormat;
+			in.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+			in.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+			DXGI_MODE_DESC out;
+
+			// https://docs.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgioutput-findclosestmatchingmode
+			ThrowIfFailed(output->FindClosestMatchingMode(&in, &out, nullptr));
+
+			// use new dimentions
+			if (m_PresentMode != PresentMode::Windowed)
+			{
+				m_Width = w = out.Width;
+				m_Height = h = out.Height;
+
+				m_pWindow->ChangeResolution({ w,h }, true);
+			}
+			// preserve window dimentions
+			else
+			{
+				m_Width = r.right;
+				m_Height = r.bottom;
+			}
+			// either way, set refresh rate from the closest output mode
+			n = out.RefreshRate.Numerator;
+			d = out.RefreshRate.Denominator;
+		}
+
+		// Release the previous swapchain we will be recreating.
+		m_pSwapChain.Reset();
+
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_swap_chain_desc1
+		DXGI_SWAP_CHAIN_DESC1 sd;
+		// 0 means "use window dimentions"
+		// but probably there should be width and height from one of the display mode
+		// to set refresh rate values right
+		sd.Width = w;
+		sd.Height = h;
+		// Note: the only supported formats with DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL are:
+		// DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM
+		sd.Format = m_BackBufferFormat;
+		sd.Stereo = FALSE;
+		// Multisampling is unsupported with DXGI_SWAP_EFFECT_FLIP_*
+		sd.SampleDesc.Count = 1;
+		sd.SampleDesc.Quality = 0;
+		sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		sd.BufferCount = m_SwapChainBufferCount; // 2-16
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_scaling
+		sd.Scaling = DXGI_SCALING_STRETCH;
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_effect
+		sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; // TODO: discard?
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_alpha_mode
+		sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+		// Set swap chain flags
+		{
+			// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_chain_flag
+			UINT flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+			BOOL tearing{ FALSE };
+			if (SUCCEEDED(m_pFactory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing))) && tearing)
+			{
+				flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+				m_TearingSupport = true;
+			}
+			sd.Flags = flags;
+		}
+
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_swap_chain_fullscreen_desc
+		DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsd;
+		fsd.RefreshRate.Numerator = n;
+		fsd.RefreshRate.Denominator = d;
+		fsd.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+		// https://docs.microsoft.com/ru-ru/previous-versions/windows/desktop/legacy/bb173066(v=vs.85)
+		fsd.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+		fsd.Windowed = m_PresentMode != PresentMode::Fullscreen ? TRUE : FALSE;
+
+		// https://docs.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgifactory2-createswapchainforhwnd
+		Microsoft::WRL::ComPtr<IDXGISwapChain1> sc;
+		ThrowIfFailed(m_pFactory->CreateSwapChainForHwnd(m_pCommandQueue.Get(), hWnd, &sd, &fsd, nullptr /* TODO: restrict to output?? */, &sc));
+		ThrowIfFailed(sc.As(&m_pSwapChain));
 	}
 }

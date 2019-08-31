@@ -8,6 +8,8 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include <vector>
+
 namespace sisskey
 {
 	// https://github.com/Microsoft/DirectXTK/wiki/ThrowIfFailed
@@ -40,6 +42,7 @@ namespace sisskey
 
 	class GraphicsDeviceDX12 final : public GraphicsDevice
 	{
+		// TODO: Organize this section
 	private:
 		Microsoft::WRL::ComPtr<IDXGIFactory7> m_pFactory;
 		Microsoft::WRL::ComPtr<ID3D12Device6> m_pDevice;
@@ -68,7 +71,6 @@ namespace sisskey
 		int m_Height;
 
 		static constexpr int m_SwapChainBufferCount{ 2 };
-		int m_CurrBackBuffer = 0;
 
 		D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentBackBufferView() const;
 		
@@ -76,21 +78,34 @@ namespace sisskey
 		
 		Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[m_SwapChainBufferCount];
 
-		ID3D12Resource* m_CurrentBackBuffer() const { return mSwapChainBuffer[m_CurrBackBuffer].Get(); }
+		ID3D12Resource* m_CurrentBackBuffer() const { return mSwapChainBuffer[m_pSwapChain->GetCurrentBackBufferIndex()].Get(); }
 
 		D3D12_RECT m_ScissorRect;
 		D3D12_VIEWPORT m_ViewPort;
 
 		UINT64 m_CurrentFence{};
 		void m_FlushCommandQueue();
+
+		std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter4>> m_EnumerateAdapters();
+		std::vector<Microsoft::WRL::ComPtr<IDXGIOutput6>> m_EnumerateAdapterOutputs(Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter);
+		std::vector<DXGI_MODE_DESC1> m_EnumerateDisplayModes(Microsoft::WRL::ComPtr<IDXGIOutput6> output);
+
+		void m_CreateSwapChain();
+		Microsoft::WRL::ComPtr<IDXGIOutput6> m_GetOutputFromWindow(HWND hWnd);
 		
+		PresentMode m_PresentMode;
+		std::shared_ptr<Window> m_pWindow;
+		bool m_TearingSupport{ false };
+		bool m_VSync{ true };
+
+		Microsoft::WRL::ComPtr<IDXGIAdapter4> m_GetAdapter();
+
 	public:
-		GraphicsDeviceDX12(HWND hWnd);
+		GraphicsDeviceDX12(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceDX12()
 		{
 			BOOL fullscreen;
-			Microsoft::WRL::ComPtr<IDXGIOutput> output;
-			m_pSwapChain->GetFullscreenState(&fullscreen, &output);
+			m_pSwapChain->GetFullscreenState(&fullscreen, nullptr);
 			if (fullscreen)
 				m_pSwapChain->SetFullscreenState(FALSE, nullptr);
 			m_FlushCommandQueue();
