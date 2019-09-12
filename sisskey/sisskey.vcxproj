@@ -93,6 +93,7 @@
   <ItemGroup>
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="Engine.h" />
+    <ClInclude Include="GraphicsDescriptors.h" />
     <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="GraphicsDeviceDX12.h" />
     <ClInclude Include="GraphicsDeviceVulkan.h" />

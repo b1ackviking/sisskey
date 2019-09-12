@@ -95,6 +95,9 @@
     <ClInclude Include="d3dx12.h">
       <Filter>Core\GraphicsDevice\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsDescriptors.h">
+      <Filter>Core\GraphicsDevice</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt" />

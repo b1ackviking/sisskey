@@ -65,7 +65,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 											  sisskey::GraphicsDevice::PresentMode::Windowed,
 											  sisskey::GraphicsDevice::API::DX12);
 
-	while (gd->Render(), w->ProcessMessages() != sisskey::Window::PMResult::Quit);
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render();
 	
 	return 0;
 }

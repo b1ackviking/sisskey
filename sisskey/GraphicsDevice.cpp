@@ -15,6 +15,6 @@ namespace sisskey
 		if (api == API::DX12)
 			return std::make_unique<GraphicsDeviceDX12>(window, mode);
 #endif
-		return std::make_unique<GraphicsDeviceVulkan>();
+		return std::make_unique<GraphicsDeviceVulkan>(window, mode);
 	}
 }

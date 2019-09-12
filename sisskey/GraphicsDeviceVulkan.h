@@ -11,7 +11,7 @@ namespace sisskey
 
 
 	public:
-		GraphicsDeviceVulkan();
+		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceVulkan();
 
 		void Render() override {}
