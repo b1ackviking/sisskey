@@ -66,6 +66,9 @@
     <ClCompile Include="GraphicsDeviceDX12.cpp">
       <Filter>Core\GraphicsDevice\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="vk_mem_alloc.cpp">
+      <Filter>Core\GraphicsDevice\Vulkan</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine.h">

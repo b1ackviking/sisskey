@@ -4,6 +4,8 @@
 #ifdef NDEBUG
 #define D3D12_IGNORE_SDK_LAYERS
 #endif
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>

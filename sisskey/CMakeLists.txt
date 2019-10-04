@@ -22,9 +22,9 @@ endif()
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 if (UNIX)
-	target_link_libraries(${PROJECT_NAME} xcb xcb-image)
+	target_link_libraries(${PROJECT_NAME} PRIVATE xcb xcb-image)
 elseif(WIN32)
-	target_link_libraries(${PROJECT_NAME} d3d12.lib dxgi.lib)
+	target_link_libraries(${PROJECT_NAME} PRIVATE d3d12.lib dxgi.lib)
 endif()
 
 # find_package(Threads)
@@ -32,4 +32,7 @@ endif()
 
 find_package(Vulkan)
 target_include_directories(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
-target_link_libraries(${PROJECT_NAME} Vulkan::Vulkan)
+target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+
+find_package(unofficial-vulkan-memory-allocator CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::vulkan-memory-allocator::vulkan-memory-allocator)

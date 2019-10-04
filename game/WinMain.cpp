@@ -62,8 +62,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 	auto w = sisskey::Window::Create();
 	auto gd = sisskey::GraphicsDevice::Create(w,
-											  sisskey::GraphicsDevice::PresentMode::Windowed,
-											  sisskey::GraphicsDevice::API::DX12);
+											  sisskey::GraphicsDevice::PresentMode::Windowed);
 
 	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render();
 	

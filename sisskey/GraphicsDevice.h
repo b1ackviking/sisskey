@@ -30,6 +30,7 @@ namespace sisskey
 		{}
 		static constexpr Graphics::FORMAT m_BackBufferFormat{ Graphics::FORMAT::B8G8R8A8_UNORM };
 		static constexpr int m_BackBufferCount{ 2 }; // 2-16
+		static constexpr Graphics::FORMAT m_DepthStencilFormat{ Graphics::FORMAT::D32_FLOAT_S8X24_UINT };
 
 		std::shared_ptr<Window> m_pWindow;
 		int m_Width{};
