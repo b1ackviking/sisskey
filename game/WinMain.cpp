@@ -11,6 +11,18 @@
 #define NOMINMAX
 #include <Windows.h>
 
+// set linker flags for visual studio here because
+// it's impossible to do this with CMakeLists.txt
+// conditionally on a build type
+// TODO: clang-cl ???
+#ifdef _MSC_VER
+	#ifndef NDEBUG
+		#pragma comment(linker, "/SUBSYSTEM:CONSOLE")
+	#else
+		#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
+	#endif
+#endif
+
 #ifndef NDEBUG
 #include <crtdbg.h>
 
