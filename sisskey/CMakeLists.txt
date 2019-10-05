@@ -9,6 +9,7 @@ set(SOURCES	Engine.h Engine.cpp
 			Timer.h Timer.cpp
 			Window.h Window.cpp
 			GraphicsDevice.h GraphicsDevice.cpp
+			vk_mem_alloc.cpp
 			GraphicsDeviceVulkan.h GraphicsDeviceVulkan.cpp)
 
 # platform specific source files

@@ -1,5 +1,6 @@
 #include "../sisskey/Engine.h"
 #include "../sisskey/Window.h"
+#include "../sisskey/GraphicsDevice.h"
 
 #include <string>
 #include <sstream>
@@ -20,7 +21,9 @@ int main(int argc, char** argv)
 	engine.Initialize();
 
 	auto w = sisskey::Window::Create();
-	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit);
+	auto gd = sisskey::GraphicsDevice::Create(w);
+
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render();
 
 	return 0;
 }

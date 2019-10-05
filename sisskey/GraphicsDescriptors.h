@@ -18,14 +18,14 @@ namespace sisskey::Graphics
 		static constexpr bool enable = false;
 	};
 	#define ENABLE_BITMASK_OPERATORS(x) template<> struct EnableBitMaskOperators<x> { static const bool enable = true; };
-	
+
 	template<typename Enum>
 	constexpr auto operator |(Enum lhs, Enum rhs) -> typename std::enable_if_t<EnableBitMaskOperators<Enum>::enable, Enum>
 	{
 		using underlying = typename std::underlying_type_t<Enum>;
 		return static_cast<Enum> (static_cast<underlying>(lhs) | static_cast<underlying>(rhs));
 	}
-	
+
 	template<typename Enum>
 	constexpr auto operator &(Enum lhs, Enum rhs) -> typename std::enable_if_t<EnableBitMaskOperators<Enum>::enable, Enum>
 	{
@@ -393,7 +393,7 @@ namespace sisskey::Graphics
 		unsigned int ArraySize{ 1 };
 		unsigned int MipLevels{ 1 };
 		FORMAT Format{ FORMAT::UNKNOWN };
-		SampleDesc SampleDesc;
+		SampleDesc Sample;
 		USAGE Usage{ USAGE::DEFAULT };
 		unsigned int BindFlags{};
 		unsigned int CPUAccessFlags{};

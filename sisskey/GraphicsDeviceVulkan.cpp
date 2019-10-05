@@ -2,7 +2,7 @@
 
 #include "Window.h"
 
-#include <DirectXColors.h>
+// #include <DirectXColors.h>
 
 #include <set>
 #include <iostream>
@@ -20,7 +20,7 @@ namespace sisskey
 {
 	namespace Graphics
 	{
-		constexpr inline vk::ColorComponentFlags VK_ColorWriteMask(COLOR_WRITE_ENABLE value)
+		inline vk::ColorComponentFlags VK_ColorWriteMask(COLOR_WRITE_ENABLE value)
 		{
 			vk::ColorComponentFlags flag{};
 
@@ -265,7 +265,7 @@ namespace sisskey
 			case vk::Format::eR32G32Sfloat:				return FORMAT::R32G32_FLOAT;
 			case vk::Format::eR32G32Uint:				return FORMAT::R32G32_UINT;
 			case vk::Format::eR32G32Sint:				return FORMAT::R32G32_SINT;
-				// case vk::Format::eD32SfloatS8Uint:			return FORMAT::R32G8X24_TYPELESS;
+			// case vk::Format::eD32SfloatS8Uint:			return FORMAT::R32G8X24_TYPELESS;
 			case vk::Format::eD32SfloatS8Uint:		return FORMAT::D32_FLOAT_S8X24_UINT;
 
 			case vk::Format::eA2B10G10R10UnormPack32:	return FORMAT::R10G10B10A2_UNORM;
@@ -286,19 +286,19 @@ namespace sisskey
 			case vk::Format::eR16G16Snorm:				return FORMAT::R16G16_SNORM;
 			case vk::Format::eR16G16Sint:				return FORMAT::R16G16_SINT;
 
-				// case vk::Format::eD32Sfloat:				return FORMAT::R32_TYPELESS;
+			// case vk::Format::eD32Sfloat:				return FORMAT::R32_TYPELESS;
 			case vk::Format::eD32Sfloat:				return FORMAT::D32_FLOAT;
 			case vk::Format::eR32Sfloat:				return FORMAT::R32_FLOAT;
 			case vk::Format::eR32Uint:					return FORMAT::R32_UINT;
 			case vk::Format::eR32Sint:					return FORMAT::R32_SINT;
-				// case vk::Format::eD24UnormS8Uint:		return FORMAT::R24G8_TYPELESS;
+			// case vk::Format::eD24UnormS8Uint:		return FORMAT::R24G8_TYPELESS;
 			case vk::Format::eD24UnormS8Uint:			return FORMAT::D24_UNORM_S8_UINT;
 
 			case vk::Format::eR8G8Unorm:				return FORMAT::R8G8_UNORM;
 			case vk::Format::eR8G8Uint:					return FORMAT::R8G8_UINT;
 			case vk::Format::eR8G8Snorm:				return FORMAT::R8G8_SNORM;
 			case vk::Format::eR8G8Sint:					return FORMAT::R8G8_SINT;
-				// case vk::Format::eD16Unorm:				return FORMAT::R16_TYPELESS;
+			// case vk::Format::eD16Unorm:				return FORMAT::R16_TYPELESS;
 			case vk::Format::eR16Sfloat:				return FORMAT::R16_FLOAT;
 			case vk::Format::eD16Unorm:					return FORMAT::D16_UNORM;
 			case vk::Format::eR16Unorm:					return FORMAT::R16_UNORM;
@@ -363,7 +363,7 @@ namespace sisskey
 
 		return res;
 	}
-	
+
 	bool GraphicsDeviceVulkan::m_CheckPhysicalDeviceExtensionSupport(vk::PhysicalDevice device)
 	{
 		auto extensions = device.enumerateDeviceExtensionProperties();
@@ -464,7 +464,9 @@ namespace sisskey
 		m_surface = m_instance->createWin32SurfaceKHRUnique(surfaceInfo);
 
 #elif defined(__linux__)
-		// TODO: create XCB surface
+		auto wnd = std::static_pointer_cast<std::tuple<xcb_connection_t*, xcb_window_t>, void>(Window::GetNativeHandle(m_pWindow.get()));
+		vk::XcbSurfaceCreateInfoKHR xcbInfo{{}, std::get<xcb_connection_t*>(*wnd), std::get<xcb_window_t>(*wnd) };
+		m_surface = m_instance->createXcbSurfaceKHRUnique(xcbInfo);
 #endif
 
 		// TODO: select physical device
@@ -531,7 +533,7 @@ namespace sisskey
 		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
 
 		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(), m_BackBufferCount, SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE };
-	
+
 		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsFamily, m_QueueFamilyIndices.PresentFamily };
 		if (m_QueueFamilyIndices.GraphicsFamily != m_QueueFamilyIndices.PresentFamily)
 		{
@@ -547,7 +549,7 @@ namespace sisskey
 		}
 
 		m_swapchain = m_device->createSwapchainKHRUnique(swapchainInfo);
-		
+
 		m_SwapChainImages = m_device->getSwapchainImagesKHR(m_swapchain.get());
 		assert(m_SwapChainImages.size() == m_BackBufferCount);
 
@@ -640,8 +642,9 @@ namespace sisskey
 		m_cmd[0]->begin(begin);
 
 		std::array<vk::ClearValue, 2> cv{};
-		const float* c = DirectX::Colors::LightSteelBlue;
-		cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
+		// const float* c = DirectX::Colors::LightSteelBlue;
+		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
+		cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
 		cv[1].depthStencil.depth = 1.f;
 		cv[1].depthStencil.stencil = 0;
 
