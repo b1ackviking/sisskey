@@ -19,16 +19,4 @@ namespace sisskey
 		return std::make_shared<WindowXCB>(title, size, position, fullscreen, cursor);
 #endif
 	}
-
-	[[nodiscard]] std::shared_ptr<void> Window::GetNativeHandle(Window* window)
-	{
-		assert(window);
-#ifdef _WIN64
-		WindowWinAPI* w = static_cast<WindowWinAPI*>(window);
-		return std::make_shared<std::tuple<HWND, HINSTANCE>>(w->m_hWnd, w->m_hInstance);
-#elif defined(__linux__)
-		WindowXCB* w = static_cast<WindowXCB*>(window);
-		return std::make_shared<std::tuple<xcb_connection_t*, xcb_window_t>>(w->m_pConnection, w->m_Window);
-#endif
-	}
 }

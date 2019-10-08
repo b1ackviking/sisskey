@@ -823,7 +823,7 @@ namespace sisskey
 
 	void GraphicsDeviceDX12::m_CreateSwapChain()
 	{
-		HWND hWnd = std::get<0>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(Window::GetNativeHandle(m_pWindow.get())));
+		HWND hWnd = std::get<HWND>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(m_pWindow->GetNativeHandle()));
 		int n{ 60 }, d{ 1 };
 
 		// Get window dimentions and refresh rate
@@ -831,13 +831,11 @@ namespace sisskey
 			auto output = m_GetOutputFromWindow(hWnd);
 			assert(output);
 
-			// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
-			RECT r;
-			GetClientRect(hWnd, &r);
+			auto [width, height] = m_pWindow->GetSize();
 
 			DXGI_MODE_DESC in;
-			in.Width = r.right;
-			in.Height = r.bottom;
+			in.Width = width;
+			in.Height = height;
 			in.RefreshRate.Numerator = 0;
 			in.RefreshRate.Denominator = 0;
 			in.Format = DX12_Format(m_BackBufferFormat);
@@ -860,8 +858,8 @@ namespace sisskey
 			// preserve window dimentions
 			else
 			{
-				m_Width = r.right;
-				m_Height = r.bottom;
+				m_Width = width;
+				m_Height = height;
 			}
 			// set refresh rate from the closest output mode
 			n = out.RefreshRate.Numerator;

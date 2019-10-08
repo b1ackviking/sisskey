@@ -12,10 +12,12 @@
 
 #ifndef NDEBUG
 #define VMA_ASSERT(expr) assert(expr)
+#else
+#define VMA_ASSERT(expr)
 #endif // !NDEBUG
 #include <vk_mem_alloc.h>
 
-#include <numeric>
+#include <optional>
 
 namespace sisskey
 {
@@ -36,23 +38,31 @@ namespace sisskey
 		vk::UniqueFence m_fence;
 		vk::UniqueSemaphore m_sem;
 
+		void m_CreateInstance();
+		void m_CreateSurface();
+		void m_CreatePhysicalDevice();
+		void m_CreateLogicalDevice();
+		void m_CreateSwapChain();
+		void m_CreateAllocator();
+
+		void m_CreateDepthStencilBuffer();
+		
+		void m_CreateRenderPass();
+		void m_CreateFrameBuffers();
+
 		struct QueueFamilyIndices
 		{
-			std::uint32_t GraphicsFamily{ std::numeric_limits<std::uint32_t>::max() };
-			std::uint32_t PresentFamily{ std::numeric_limits<std::uint32_t>::max() };
-			std::uint32_t CopyFamily{ std::numeric_limits<std::uint32_t>::max() };
+			std::optional<std::uint32_t> GraphicsFamily;
+			std::optional<std::uint32_t> PresentFamily;
+			std::optional<std::uint32_t> CopyFamily;
 
-			constexpr bool Filled(void) const
-			{
-				constexpr std::uint32_t max = std::numeric_limits<std::uint32_t>::max();
-				return GraphicsFamily != max && PresentFamily != max && CopyFamily != max;
-			}
+			constexpr bool Filled() const noexcept { return GraphicsFamily.has_value() && PresentFamily.has_value() && CopyFamily.has_value(); }
 		};
 		QueueFamilyIndices m_QueueFamilyIndices{};
 
 		QueueFamilyIndices m_GetQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface);
 		bool m_CheckPhysicalDeviceExtensionSupport(vk::PhysicalDevice device);
-		static constexpr std::array m_PhysicalDeviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+		static constexpr std::array m_PhysicalDeviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME };
 
 		struct SwapChainSupportDetails
 		{
@@ -83,6 +93,6 @@ namespace sisskey
 		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceVulkan();
 
-		void Render() override;
+		void Render() final;
 	};
 }

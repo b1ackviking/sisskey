@@ -31,12 +31,13 @@ namespace sisskey
 		[[nodiscard]] virtual std::string GetTitle() const = 0;
 		virtual void UseSystemCursor(bool use) noexcept = 0;
 		virtual void ChangeResolution(std::pair<int, int> size, bool fullscreen) = 0;
+		[[nodiscard]] virtual std::pair<int, int> GetSize() const = 0;
+		[[nodiscard]] virtual std::shared_ptr<void> GetNativeHandle() const = 0;
 
 		[[nodiscard]] static std::shared_ptr<Window> Create(std::string_view title = u8"sisskey",
 															std::pair<int, int> size = { 1280, 720 },
 															std::pair<int, int> position = { -1,-1 },
 															bool fullscreen = false,
 															bool cursor = true);
-		[[nodiscard]] static std::shared_ptr<void> GetNativeHandle(Window* window);
 	};
 }

@@ -23,10 +23,16 @@ namespace sisskey
 
 		// TODO: constness??
 
-		[[nodiscard]] PMResult ProcessMessages() noexcept override;
-		void SetTitle(std::string_view title) override;
-		[[nodiscard]] std::string GetTitle() const override;
-		void UseSystemCursor(bool use) noexcept override;
-		void ChangeResolution(std::pair<int, int> size, bool fullscreen) override;
+		[[nodiscard]] PMResult ProcessMessages() noexcept final;
+		void SetTitle(std::string_view title) final;
+		[[nodiscard]] std::string GetTitle() const final;
+		void UseSystemCursor(bool use) noexcept final;
+		void ChangeResolution(std::pair<int, int> size, bool fullscreen) final;
+		// TODO:
+		[[nodiscard]] std::pair<int, int> GetSize() const final { return {}; }
+		[[nodiscard]] std::shared_ptr<void> GetNativeHandle() const final
+		{
+			return std::make_shared<std::tuple<xcb_connection_t*, xcb_window_t>>(m_pConnection, m_Window);
+		}
 	};
 }

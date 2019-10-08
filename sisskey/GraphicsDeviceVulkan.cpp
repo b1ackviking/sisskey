@@ -11,7 +11,8 @@
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 													VkDebugUtilsMessageTypeFlagsEXT messageType,
 													const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-													void* pUserData) {
+													void* pUserData)
+{
 	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 	return VK_FALSE;
 }
@@ -330,7 +331,248 @@ namespace sisskey
 		}
 	}
 
-	// TODO: more complex logic
+	void GraphicsDeviceVulkan::m_CreateInstance()
+	{
+		vk::ApplicationInfo appInfo{ u8"sisskey game", VK_MAKE_VERSION(1,0,0), u8"sisskey", VK_MAKE_VERSION(1,0,0), VK_API_VERSION_1_1 };
+		std::vector<const char*> instanceExtentions;
+		std::vector<const char*> instanceLayers;
+
+		instanceExtentions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+		instanceExtentions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+#if defined(_WIN64)
+		instanceExtentions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#elif defined(__linux__)
+		instanceExtentions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+#endif
+
+#ifndef NDEBUG
+		instanceLayers.push_back("VK_LAYER_LUNARG_standard_validation");
+		instanceExtentions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif // !NDEBUG
+
+		vk::InstanceCreateInfo instanceInfo{ {}, &appInfo,
+											static_cast<std::uint32_t>(instanceLayers.size()), instanceLayers.data(),
+											static_cast<std::uint32_t>(instanceExtentions.size()), instanceExtentions.data() };
+
+		m_instance = vk::createInstanceUnique(instanceInfo);
+
+#ifndef NDEBUG
+		auto severityFlags = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
+		// | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo;
+
+		auto typeFlags = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
+			| vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+			| vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
+
+		auto messenger = m_instance->createDebugUtilsMessengerEXTUnique({ {}, severityFlags, typeFlags, debugCallback }, nullptr, vk::DispatchLoaderDynamic(m_instance.get()));
+#endif // NDEBUG
+	}
+
+	void GraphicsDeviceVulkan::m_CreateSurface()
+	{
+#if defined(_WIN64)
+		auto wnd = std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(m_pWindow->GetNativeHandle());
+
+		vk::Win32SurfaceCreateInfoKHR surfaceInfo{ {}, std::get<HINSTANCE>(*wnd), std::get<HWND>(*wnd) };
+		m_surface = m_instance->createWin32SurfaceKHRUnique(surfaceInfo);
+
+#elif defined(__linux__)
+		auto wnd = std::static_pointer_cast<std::tuple<xcb_connection_t*, xcb_window_t>, void>(m_pWindow->GetNativeHandle());
+		vk::XcbSurfaceCreateInfoKHR xcbInfo{ {}, std::get<xcb_connection_t*>(*wnd), std::get<xcb_window_t>(*wnd) };
+		m_surface = m_instance->createXcbSurfaceKHRUnique(xcbInfo);
+#endif
+	}
+
+	void GraphicsDeviceVulkan::m_CreatePhysicalDevice()
+	{
+		auto pdevs = m_instance->enumeratePhysicalDevices();
+
+		auto it = std::find_if(pdevs.begin(), pdevs.end(), [this](const auto& device)
+								{
+									m_QueueFamilyIndices = m_GetQueueFamilies(device, m_surface.get());
+									bool e = m_CheckPhysicalDeviceExtensionSupport(device);
+									bool s = false;
+									if (e)
+									{
+										SwapChainSupportDetails scd = m_GetSwapChainSupport(device, m_surface.get());
+										s = !scd.Formats.empty() && !scd.PresentModes.empty();
+									}
+
+									return m_QueueFamilyIndices.Filled() && e && s;
+								});
+
+		if (it == pdevs.end())
+			throw std::runtime_error{ u8"No physical device" };
+
+		m_physDevice = *it;
+	}
+
+	// TODO: broken
+	// need: enum queue caps
+	// need: struct queue caps, family index, queue index
+	void GraphicsDeviceVulkan::m_CreateLogicalDevice()
+	{
+		std::set queueFamilies{ m_QueueFamilyIndices.PresentFamily.value(), m_QueueFamilyIndices.GraphicsFamily.value(), m_QueueFamilyIndices.CopyFamily.value() };
+		float queuePriority{ 1.f };
+
+		std::vector<vk::DeviceQueueCreateInfo> queueInfos;
+		for (auto familyIndex : queueFamilies)
+		{
+			vk::DeviceQueueCreateInfo queueInfo{ {}, familyIndex, 1, &queuePriority };
+			queueInfos.push_back(queueInfo);
+		}
+
+		auto pdevFeatures = m_physDevice.getFeatures();
+
+		vk::DeviceCreateInfo deviceInfo{ {}, static_cast<std::uint32_t>(queueInfos.size()), queueInfos.data(),
+										0, nullptr,
+										static_cast<std::uint32_t>(m_PhysicalDeviceExtensions.size()), m_PhysicalDeviceExtensions.data(),
+										& pdevFeatures };
+
+		m_device = m_physDevice.createDeviceUnique(deviceInfo);
+
+		m_PresentQueue = m_device->getQueue(m_QueueFamilyIndices.PresentFamily.value(), 0);
+		m_GraphicsQueue = m_device->getQueue(m_QueueFamilyIndices.GraphicsFamily.value(), 0);
+		m_CopyQueue = m_device->getQueue(m_QueueFamilyIndices.CopyFamily.value(), m_QueueFamilyIndices.GraphicsFamily.value() == m_QueueFamilyIndices.CopyFamily.value() ? 1 : 0);
+	}
+	
+	void GraphicsDeviceVulkan::m_CreateSwapChain()
+	{
+		SwapChainSupportDetails SwapChainDetails = m_GetSwapChainSupport(m_physDevice, m_surface.get());
+		vk::SurfaceFormatKHR SurfaceFormat = m_ChooseSwapSurfaceFormat(SwapChainDetails.Formats);
+		vk::PresentModeKHR PresentMode = m_ChooseSwapPresentMode(SwapChainDetails.PresentModes);
+
+		// TODO: size ? fullscreen ? mode
+		auto [w, h] = m_pWindow->GetSize();
+		m_Width = w;
+		m_Height = h;
+
+		m_SwapChainExtent.width = std::max(SwapChainDetails.Capabilities.minImageExtent.width, std::min(SwapChainDetails.Capabilities.maxImageExtent.width, static_cast<uint32_t>(m_Width)));
+		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
+
+		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(), m_BackBufferCount, SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE, m_swapchain.get() };
+		VkSurfaceFullScreenExclusiveInfoEXT fullscreenInfo{};
+		fullscreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
+		fullscreenInfo.fullScreenExclusive = VkFullScreenExclusiveEXT::VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
+		// TODO: NEEDED ??
+		/*
+#ifdef _WIN64
+		VkSurfaceFullScreenExclusiveWin32InfoEXT win32fullscreenInfo{};
+		win32fullscreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT;
+		win32fullscreenInfo.hmonitor = MonitorFromWindow(std::get<HWND>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(m_pWindow->GetNativeHandle())), MONITOR_DEFAULTTOPRIMARY);
+		fullscreenInfo.pNext = &win32fullscreenInfo;
+#endif
+		*/
+		swapchainInfo.pNext = &fullscreenInfo;
+
+		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsFamily.value(), m_QueueFamilyIndices.PresentFamily.value() };
+		if (m_QueueFamilyIndices.PresentFamily != m_QueueFamilyIndices.GraphicsFamily)
+		{
+			swapchainInfo.imageSharingMode = vk::SharingMode::eConcurrent;
+			swapchainInfo.queueFamilyIndexCount = 2;
+			swapchainInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+		}
+
+		m_swapchain = m_device->createSwapchainKHRUnique(swapchainInfo);
+
+		m_SwapChainImages = m_device->getSwapchainImagesKHR(m_swapchain.get());
+		assert(m_SwapChainImages.size() == m_BackBufferCount);
+
+		m_SwapChainImageFormat = SurfaceFormat.format;
+
+		// explicitly delete old image views in case swapchain is recreated
+		m_sciv.clear();
+
+		for (const auto& img : m_SwapChainImages)
+		{
+			vk::ImageViewCreateInfo imageInfo{ {}, img, vk::ImageViewType::e2D, m_SwapChainImageFormat, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
+			m_sciv.push_back(m_device->createImageViewUnique(imageInfo));
+		}
+
+		// TODO: ??
+		/*if (m_PresentMode == PresentMode::Fullscreen)
+		{
+			m_device->acquireFullScreenExclusiveModeEXT(m_swapchain.get(), vk::DispatchLoaderDynamic(m_instance.get(), m_device.get()));
+		}*/
+
+		// TODO: recreate dependent objects ??
+	}
+	
+	void GraphicsDeviceVulkan::m_CreateAllocator()
+	{
+		// TODO: dedicated allocation
+		VmaAllocatorCreateInfo allocatorInfo = {};
+		allocatorInfo.physicalDevice = m_physDevice;
+		allocatorInfo.device = m_device.get();
+		vmaCreateAllocator(&allocatorInfo, &m_vma);
+	}
+
+	void GraphicsDeviceVulkan::m_CreateDepthStencilBuffer()
+	{
+		vk::ImageCreateInfo dsInfo{ {}, vk::ImageType::e2D, VK_Format(m_DepthStencilFormat), { m_SwapChainExtent.width, m_SwapChainExtent.height, 1 }, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment };
+		m_dsi = m_device->createImageUnique(dsInfo);
+
+		// TODO: vma cpp?
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+		vmaAllocateMemoryForImage(m_vma, m_dsi.get(), &allocInfo, &alloc, nullptr);
+
+		vmaBindImageMemory(m_vma, alloc, m_dsi.get());
+
+		vk::ImageViewCreateInfo dsivInfo{ {}, m_dsi.get(), vk::ImageViewType::e2D, VK_Format(m_DepthStencilFormat), {}, { vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil, 0, 1, 0, 1 } };
+		m_dsv = m_device->createImageViewUnique(dsivInfo);
+	}
+
+	void GraphicsDeviceVulkan::m_CreateRenderPass()
+	{
+		// Destroy previously created renderpass
+		m_rp.reset();
+
+		std::array<vk::AttachmentDescription, 2> att{};
+		att[0].format = m_SwapChainImageFormat;
+		att[0].loadOp = vk::AttachmentLoadOp::eClear;
+		att[0].finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+		att[1].format = VK_Format(m_DepthStencilFormat);
+		att[1].loadOp = vk::AttachmentLoadOp::eClear;
+		att[1].storeOp = vk::AttachmentStoreOp::eDontCare;
+		att[1].stencilLoadOp = vk::AttachmentLoadOp::eClear;
+		att[1].stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+		att[1].finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+		std::array<vk::AttachmentReference, 1> colorRef{};
+		colorRef[0].attachment = 0;
+		colorRef[0].layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+		vk::AttachmentReference depthRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+
+		std::array<vk::SubpassDescription, 1> sp{};
+		sp[0].colorAttachmentCount = static_cast<std::uint32_t>(colorRef.size());
+		sp[0].pColorAttachments = colorRef.data();
+		sp[0].pDepthStencilAttachment = &depthRef;
+
+		vk::RenderPassCreateInfo rpInfo{ {},  static_cast<std::uint32_t>(att.size()), att.data(),
+										static_cast<std::uint32_t>(sp.size()), sp.data() };
+
+		m_rp = m_device->createRenderPassUnique(rpInfo);
+	}
+
+	void GraphicsDeviceVulkan::m_CreateFrameBuffers()
+	{
+		// Destroy previously created framebuffers
+		m_fb.clear();
+
+		for (int i{}; i < m_BackBufferCount; ++i)
+		{
+			std::array imv{ m_sciv[i].get(), m_dsv.get() };
+
+			vk::FramebufferCreateInfo fbInfo{ {}, m_rp.get(), static_cast<std::uint32_t>(imv.size()), imv.data(), m_SwapChainExtent.width, m_SwapChainExtent.height, 1 };
+			m_fb.push_back(m_device->createFramebufferUnique(fbInfo));
+		}
+	}
+
 	GraphicsDeviceVulkan::QueueFamilyIndices GraphicsDeviceVulkan::m_GetQueueFamilies(vk::PhysicalDevice pdev, vk::SurfaceKHR surface)
 	{
 		QueueFamilyIndices res;
@@ -340,16 +582,16 @@ namespace sisskey
 		std::uint32_t i{};
 		for (auto& Family : Families)
 		{
-			if (Family.queueCount > 0 && pdev.getSurfaceSupportKHR(i, surface))
+			if (Family.queueCount > 0 && pdev.getSurfaceSupportKHR(i, surface) && !res.PresentFamily)
 				res.PresentFamily = i;
 
-			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eGraphics)
+			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eGraphics && !res.GraphicsFamily)
 			{
 				res.GraphicsFamily = i;
 				--Family.queueCount;
 			}
 
-			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eTransfer)
+			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eTransfer && !res.CopyFamily)
 			{
 				res.CopyFamily = i;
 				--Family.queueCount;
@@ -392,12 +634,9 @@ namespace sisskey
 		if (Formats.size() == 1 && Formats[0].format == vk::Format::eUndefined)
 			return { Graphics::VK_Format(m_BackBufferFormat), vk::ColorSpaceKHR::eVkColorspaceSrgbNonlinear };
 
-		// std::find_if ??
 		for (const auto& Format : Formats)
-		{
 			if (Format.format == VK_Format(m_BackBufferFormat) && Format.colorSpace == vk::ColorSpaceKHR::eVkColorspaceSrgbNonlinear)
 				return Format;
-		}
 
 		return Formats[0];
 	}
@@ -420,202 +659,22 @@ namespace sisskey
 	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
-		vk::ApplicationInfo appInfo{ u8"sisskey game", VK_MAKE_VERSION(1,0,0), u8"sisskey", VK_MAKE_VERSION(1,0,0), VK_API_VERSION_1_1 };
-		std::vector<const char*> instanceExtentions;
-		std::vector<const char*> instanceLayers;
-
-		instanceExtentions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-#if defined(_WIN64)
-		instanceExtentions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#elif defined(__linux__)
-		instanceExtentions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-#endif
-
-#ifndef NDEBUG
-		instanceLayers.push_back("VK_LAYER_LUNARG_standard_validation");
-		instanceExtentions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif // !NDEBUG
-
-		vk::InstanceCreateInfo instanceInfo{ {}, &appInfo,
-											static_cast<std::uint32_t>(instanceLayers.size()), instanceLayers.data(),
-											static_cast<std::uint32_t>(instanceExtentions.size()), instanceExtentions.data() };
-
-		m_instance = vk::createInstanceUnique(instanceInfo);
-
-#ifndef NDEBUG
-		vk::DispatchLoaderDynamic dldy = vk::DispatchLoaderDynamic(m_instance.get(), vkGetInstanceProcAddr);
-
-		auto severityFlags = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
-			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
-			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
-			// | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo;
-
-		auto typeFlags = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
-			| vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
-			| vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
-
-		auto messenger = m_instance->createDebugUtilsMessengerEXTUnique({ {}, severityFlags, typeFlags, debugCallback }, nullptr, vk::DispatchLoaderDynamic(m_instance.get()));
-#endif // NDEBUG
-
-#if defined(_WIN64)
-		auto wnd = std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(Window::GetNativeHandle(m_pWindow.get()));
-
-		vk::Win32SurfaceCreateInfoKHR surfaceInfo{ {}, std::get<HINSTANCE>(*wnd), std::get<HWND>(*wnd) };
-		m_surface = m_instance->createWin32SurfaceKHRUnique(surfaceInfo);
-
-#elif defined(__linux__)
-		auto wnd = std::static_pointer_cast<std::tuple<xcb_connection_t*, xcb_window_t>, void>(Window::GetNativeHandle(m_pWindow.get()));
-		vk::XcbSurfaceCreateInfoKHR xcbInfo{{}, std::get<xcb_connection_t*>(*wnd), std::get<xcb_window_t>(*wnd) };
-		m_surface = m_instance->createXcbSurfaceKHRUnique(xcbInfo);
-#endif
-
-		// TODO: select physical device
-		auto pdevs = m_instance->enumeratePhysicalDevices();
-		auto it = std::find_if(pdevs.begin(), pdevs.end(), [this](const auto& device)
-		{
-			QueueFamilyIndices i = m_GetQueueFamilies(device, m_surface.get());
-			bool e = m_CheckPhysicalDeviceExtensionSupport(device);
-			bool s = false;
-			if (e)
-			{
-				SwapChainSupportDetails scd = m_GetSwapChainSupport(device, m_surface.get());
-				s = !scd.Formats.empty() && !scd.PresentModes.empty();
-			}
-
-			return i.Filled() && e && s;
-		});
-
-		if (it == pdevs.end())
-			throw std::runtime_error{ u8"No physical device" };
-
-		m_physDevice = *it;
-
-		m_QueueFamilyIndices = m_GetQueueFamilies(m_physDevice, m_surface.get());
-		assert(m_QueueFamilyIndices.Filled());
-
-		std::vector<vk::DeviceQueueCreateInfo> queueInfos;
-		std::set queueFamilies{ m_QueueFamilyIndices.PresentFamily, m_QueueFamilyIndices.GraphicsFamily, m_QueueFamilyIndices.CopyFamily };
-		float queuePriority{ 1.f };
-		for(auto familyIndex : queueFamilies)
-		{
-			vk::DeviceQueueCreateInfo queueInfo{ {}, familyIndex, 1, &queuePriority };
-			queueInfos.push_back(queueInfo);
-		}
-
-		auto pdevFeatures = m_physDevice.getFeatures();
-
-		vk::DeviceCreateInfo deviceInfo{ {}, static_cast<std::uint32_t>(queueInfos.size()), queueInfos.data(),
-										0, nullptr,
-										static_cast<std::uint32_t>(m_PhysicalDeviceExtensions.size()), m_PhysicalDeviceExtensions.data(),
-										&pdevFeatures };
-
-		m_device = m_physDevice.createDeviceUnique(deviceInfo);
-
-		// TODO: separate method
-		// TODO: dedicated allocation
-		VmaAllocatorCreateInfo allocatorInfo = {};
-		allocatorInfo.physicalDevice = m_physDevice;
-		allocatorInfo.device = m_device.get();
-		vmaCreateAllocator(&allocatorInfo, &m_vma);
-
-		// TODO: select DIFFERENT!
-		m_PresentQueue = m_device->getQueue(m_QueueFamilyIndices.PresentFamily, 0);
-		m_GraphicsQueue = m_device->getQueue(m_QueueFamilyIndices.GraphicsFamily, 0);
-		m_CopyQueue = m_device->getQueue(m_QueueFamilyIndices.CopyFamily, 0);
-
-		// TODO: separate method for swapchain
-		SwapChainSupportDetails SwapChainDetails = m_GetSwapChainSupport(m_physDevice, m_surface.get());
-		vk::SurfaceFormatKHR SurfaceFormat = m_ChooseSwapSurfaceFormat(SwapChainDetails.Formats);
-		vk::PresentModeKHR PresentMode = m_ChooseSwapPresentMode(SwapChainDetails.PresentModes);
-
-		// TODO: init m_Width and m_Height
-		m_SwapChainExtent.width = std::max(SwapChainDetails.Capabilities.minImageExtent.width, std::min(SwapChainDetails.Capabilities.maxImageExtent.width, static_cast<uint32_t>(m_Width)));
-		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
-
-		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(), m_BackBufferCount, SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE };
-
-		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsFamily, m_QueueFamilyIndices.PresentFamily };
-		if (m_QueueFamilyIndices.GraphicsFamily != m_QueueFamilyIndices.PresentFamily)
-		{
-			swapchainInfo.imageSharingMode = vk::SharingMode::eConcurrent;
-			swapchainInfo.queueFamilyIndexCount = 2;
-			swapchainInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-		}
-		else
-		{
-			swapchainInfo.imageSharingMode = vk::SharingMode::eExclusive;
-			swapchainInfo.queueFamilyIndexCount = VK_QUEUE_FAMILY_IGNORED; // Optional
-			swapchainInfo.pQueueFamilyIndices = nullptr; // Optional
-		}
-
-		m_swapchain = m_device->createSwapchainKHRUnique(swapchainInfo);
-
-		m_SwapChainImages = m_device->getSwapchainImagesKHR(m_swapchain.get());
-		assert(m_SwapChainImages.size() == m_BackBufferCount);
-
-		m_SwapChainImageFormat = SurfaceFormat.format;
-
-		for (const auto& img : m_SwapChainImages)
-		{
-			vk::ImageViewCreateInfo imageInfo{ {}, img, vk::ImageViewType::e2D, m_SwapChainImageFormat, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } };
-			m_sciv.push_back(m_device->createImageViewUnique(imageInfo));
-		}
-
-		vk::ImageCreateInfo dsInfo{ {}, vk::ImageType::e2D, VK_Format(m_DepthStencilFormat), { m_SwapChainExtent.width, m_SwapChainExtent.height, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment };
-		m_dsi = m_device->createImageUnique(dsInfo);
-
-		// TODO: vma cpp?
-		VmaAllocationCreateInfo allocInfo{};
-		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-		vmaAllocateMemoryForImage(m_vma, m_dsi.get(), &allocInfo, &alloc, nullptr);
-
-		vmaBindImageMemory(m_vma, alloc, m_dsi.get());
-
-		vk::ImageViewCreateInfo dsivInfo{ {}, m_dsi.get(), vk::ImageViewType::e2D, VK_Format(m_DepthStencilFormat), {}, { vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil, 0, 1, 0, 1 } };
-		m_dsv = m_device->createImageViewUnique(dsivInfo);
-
-		// TODO: ??
-		std::array<vk::AttachmentDescription, 2> att{};
-		att[0].format = m_SwapChainImageFormat;
-		att[0].loadOp = vk::AttachmentLoadOp::eClear;
-		att[0].finalLayout = vk::ImageLayout::ePresentSrcKHR;
-
-		att[1].format = VK_Format(m_DepthStencilFormat);
-		att[1].loadOp = vk::AttachmentLoadOp::eClear;
-		att[1].storeOp = vk::AttachmentStoreOp::eDontCare;
-		att[1].stencilLoadOp = vk::AttachmentLoadOp::eClear;
-		att[1].stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-		att[1].finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-
-		std::array<vk::AttachmentReference, 1> colorRef{};
-		colorRef[0].attachment = 0;
-		colorRef[0].layout = vk::ImageLayout::eColorAttachmentOptimal;
-
-		vk::AttachmentReference depthRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
-
-		std::array<vk::SubpassDescription, 1> sp{};
-		sp[0].colorAttachmentCount = static_cast<std::uint32_t>(colorRef.size());
-		sp[0].pColorAttachments = colorRef.data();
-		sp[0].pDepthStencilAttachment = &depthRef;
-
-		vk::RenderPassCreateInfo rpInfo{ {},  static_cast<std::uint32_t>(att.size()), att.data(),
-										static_cast<std::uint32_t>(sp.size()), sp.data() };
-
-		m_rp = m_device->createRenderPassUnique(rpInfo);
-
-		for (int i{}; i < m_BackBufferCount; ++i)
-		{
-			std::array imv{ m_sciv[i].get(), m_dsv.get() };
-
-			vk::FramebufferCreateInfo fbInfo{ {}, m_rp.get(), static_cast<std::uint32_t>(imv.size()), imv.data(), m_SwapChainExtent.width, m_SwapChainExtent.height, 1 };
-			m_fb.push_back(m_device->createFramebufferUnique(fbInfo));
-		}
+		m_CreateInstance();
+		m_CreateSurface();
+		m_CreatePhysicalDevice();
+		m_CreateLogicalDevice();
+		m_CreateSwapChain();
+		m_CreateAllocator();
+		m_CreateDepthStencilBuffer();
+		m_CreateRenderPass();
+		m_CreateFrameBuffers();
 
 		m_fence = m_device->createFenceUnique({});
 		m_device->resetFences(m_fence.get());
+
 		m_sem = m_device->createSemaphoreUnique({});
 
-		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsFamily };
+		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsFamily.value() };
 		m_pool = m_device->createCommandPoolUnique(poolInfo);
 
 		vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
@@ -626,6 +685,7 @@ namespace sisskey
 	{
 		m_GraphicsQueue.waitIdle();
 		m_PresentQueue.waitIdle();
+		m_CopyQueue.waitIdle();
 
 		vmaFreeMemory(m_vma, alloc);
 		vmaDestroyAllocator(m_vma);
@@ -644,7 +704,13 @@ namespace sisskey
 		std::array<vk::ClearValue, 2> cv{};
 		// const float* c = DirectX::Colors::LightSteelBlue;
 		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
-		cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
+		// cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
+		static float color = 0.0f;
+		color += 0.03f;
+		cv[0].color.setFloat32({sinf(color) * 0.5f + 0.5f,
+								sinf(color + 3.141593f / 6.0f) * 0.5f + 0.5f,
+								sinf(color + 2.0f * 3.141593f / 6.0f) * 0.5f + 0.5f,
+								1.0f});
 		cv[1].depthStencil.depth = 1.f;
 		cv[1].depthStencil.stencil = 0;
 

@@ -17,11 +17,11 @@
 // conditionally on a build type
 // TODO: clang-cl ???
 #ifdef _MSC_VER
-	#ifndef NDEBUG
-		#pragma comment(linker, "/SUBSYSTEM:CONSOLE")
-	#else
-		#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
-	#endif
+#ifndef NDEBUG
+#pragma comment(linker, "/SUBSYSTEM:CONSOLE")
+#else
+#pragma comment(linker, "/SUBSYSTEM:WINDOWS")
+#endif
 #endif
 
 #ifndef NDEBUG

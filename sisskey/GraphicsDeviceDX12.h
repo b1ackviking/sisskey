@@ -94,6 +94,6 @@ namespace sisskey
 			m_FlushCommandQueue();
 		}
 
-		void Render() override;
+		void Render() final;
 	};
 }
