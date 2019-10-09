@@ -4,6 +4,15 @@
 #include "d3dx12.h"
 #include <DirectXColors.h>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4275)
+#endif // _MSC_VER
+#include <spdlog/spdlog.h>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
+
 #include <stdexcept>
 #include <array>
 #include <string>
@@ -436,13 +445,13 @@ namespace sisskey
 			}
 		}
 
-		// TODO: log
 		// Fallback to WARP adapter
 		if (!ret)
 		{
 			Microsoft::WRL::ComPtr<IDXGIAdapter> pWarpAdapter;
 			ThrowIfFailed(m_pFactory->EnumWarpAdapter(IID_PPV_ARGS(&pWarpAdapter)));
 			ThrowIfFailed(pWarpAdapter.As(&ret));
+			spdlog::info("Fallback to WARP adapter");
 		}
 
 		return ret;
@@ -721,14 +730,15 @@ namespace sisskey
 			DXGI_ADAPTER_DESC3 desc;
 			ThrowIfFailed(adapter->GetDesc3(&desc));
 
-			// TODO: log
-			std::wstring text = L"***Adapter: ";
-			text += desc.Description;
+			std::wstring text = desc.Description;
 			text += L" Memory: ";
 			text += std::to_wstring(desc.DedicatedVideoMemory / 1024 / 1024);
-			desc.Flags& DXGI_ADAPTER_FLAG3_SOFTWARE ? text += L" SOFTWARE ADAPTER!" : text += L" PHYSICAL ADAPTER";
-			text += L"\n";
-			OutputDebugStringW(text.c_str());
+			desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE ? text += L" SOFTWARE ADAPTER" : text += L" PHYSICAL ADAPTER";
+
+			const int length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), nullptr, 0, nullptr, nullptr);
+			std::string result(length, 0);
+			WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), result.data(), length, nullptr, nullptr);
+			spdlog::info(result);
 
 			adapters.push_back(adapter);
 		}
@@ -748,11 +758,12 @@ namespace sisskey
 			DXGI_OUTPUT_DESC1 desc;
 			ThrowIfFailed(output->GetDesc1(&desc));
 
-			// TODO: log
-			std::wstring text = L"***Output: ";
+			std::wstring text = L"Output: ";
 			text += desc.DeviceName;
-			text += L"\n";
-			OutputDebugStringW(text.c_str());
+			const int length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), nullptr, 0, nullptr, nullptr);
+			std::string result(length, 0);
+			WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), result.data(), length, nullptr, nullptr);
+			spdlog::info(result);
 
 			outputs.push_back(output);
 		}
@@ -771,10 +782,9 @@ namespace sisskey
 		std::vector<DXGI_MODE_DESC1> modes(count);
 		ThrowIfFailed(output->GetDisplayModeList1(bbf, flags, &count, modes.data()));
 
-		// TODO: log
 		for (const auto& mode : modes)
 		{
-			std::wstring text = L"Width = " +
+			std::wstring text = L"Mode: Width = " +
 				std::to_wstring(mode.Width) +
 				L" " +
 				L"Height = " +
@@ -783,9 +793,11 @@ namespace sisskey
 				L"Refresh = " +
 				std::to_wstring(mode.RefreshRate.Numerator) +
 				L"/" +
-				std::to_wstring(mode.RefreshRate.Denominator) +
-				L"\n";
-			OutputDebugStringW(text.c_str());
+				std::to_wstring(mode.RefreshRate.Denominator);
+			const int length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), nullptr, 0, nullptr, nullptr);
+			std::string result(length, 0);
+			WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.length()), result.data(), length, nullptr, nullptr);
+			spdlog::info(result);
 		}
 
 		return modes;

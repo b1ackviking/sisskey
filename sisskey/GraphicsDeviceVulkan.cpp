@@ -4,17 +4,39 @@
 
 // #include <DirectXColors.h>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4275)
+#endif // _MSC_VER
+#include <spdlog/spdlog.h>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
+
 #include <set>
-#include <iostream>
 #include <cmath>
 
-// TODO: spdlog
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 													VkDebugUtilsMessageTypeFlagsEXT messageType,
 													const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 													void* pUserData)
 {
-	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+	auto type = messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT ? "VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL" :
+		messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ? "VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE" :
+		"VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION";
+	switch (messageSeverity)
+	{
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+		spdlog::info("[{}] {}", type, pCallbackData->pMessage);
+		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+		spdlog::warn("[{}] {}", type, pCallbackData->pMessage);
+		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+		spdlog::error("[{}] {}", type, pCallbackData->pMessage);
+		break;
+	}
 	return VK_FALSE;
 }
 

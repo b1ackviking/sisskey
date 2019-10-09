@@ -37,3 +37,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
 
 find_package(unofficial-vulkan-memory-allocator CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::vulkan-memory-allocator::vulkan-memory-allocator)
+
+find_package(spdlog CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
