@@ -29,7 +29,7 @@ namespace sisskey
 		void UseSystemCursor(bool use) noexcept final;
 		void ChangeResolution(std::pair<int, int> size, bool fullscreen) final;
 		// TODO:
-		[[nodiscard]] std::pair<int, int> GetSize() const final { return {}; }
+		[[nodiscard]] std::pair<int, int> GetSize() const final;
 		[[nodiscard]] std::shared_ptr<void> GetNativeHandle() const final
 		{
 			return std::make_shared<std::tuple<xcb_connection_t*, xcb_window_t>>(m_pConnection, m_Window);

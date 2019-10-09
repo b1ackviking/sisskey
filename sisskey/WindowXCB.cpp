@@ -145,6 +145,7 @@ namespace sisskey
 						  XCB_COPY_FROM_PARENT, // depth
 						  m_Window,
 						  pScreen->root, // parent
+						  // (-1,-1) seems to automatically place window at the center of the screen
 						  static_cast<std::uint16_t>(x), static_cast<std::uint16_t>(y),
 						  static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height),
 						  0, // border
@@ -152,69 +153,8 @@ namespace sisskey
 						  pScreen->root_visual,
 						  mask, values);
 
-		// to remove decorations
-		// https://stackoverflow.com/questions/28366896/how-to-remove-window-decorations-with-xcb
+		ChangeResolution({ width,height }, fullscreen);
 
-		// to disable actions
-		// https://stackoverflow.com/questions/14442081/disable-actions-move-resize-minimize-etc-using-python-xlib/38175137#38175137
-		// https://specifications.freedesktop.org/wm-spec/1.3/ar01s05.html#id2523223
-
-		if (fullscreen)
-		{
-			xcb_intern_atom_cookie_t cookie1;
-			xcb_intern_atom_cookie_t cookie2;
-			xcb_intern_atom_reply_t* reply;
-			xcb_atom_t prop;
-			xcb_atom_t state;
-
-			cookie1 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen("_NET_WM_STATE")), "_NET_WM_STATE");
-			cookie2 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen("_NET_WM_STATE_FULLSCREEN")), "_NET_WM_STATE_FULLSCREEN");
-			reply = xcb_intern_atom_reply(m_pConnection, cookie1, nullptr);
-			prop = reply->atom;
-			reply = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
-			state = reply->atom;
-			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, prop, XCB_ATOM_ATOM, 32, 1, (const void*)& state);
-		}
-
-		enum
-		{
-			XCB_SIZE_US_POSITION_HINT = 1 << 0,
-			XCB_SIZE_US_SIZE_HINT = 1 << 1,
-			XCB_SIZE_P_POSITION_HINT = 1 << 2,
-			XCB_SIZE_P_SIZE_HINT = 1 << 3,
-			XCB_SIZE_P_MIN_SIZE_HINT = 1 << 4,
-			XCB_SIZE_P_MAX_SIZE_HINT = 1 << 5,
-			XCB_SIZE_P_RESIZE_INC_HINT = 1 << 6,
-			XCB_SIZE_P_ASPECT_HINT = 1 << 7,
-			XCB_SIZE_BASE_SIZE_HINT = 1 << 8,
-			XCB_SIZE_P_WIN_GRAVITY_HINT = 1 << 9
-		};
-
-		struct xcb_size_hints_t
-		{
-			uint32_t flags;
-			int32_t  x, y, width, height;
-			int32_t  min_width, min_height;
-			int32_t  max_width, max_height;
-			int32_t  width_inc, height_inc;
-			int32_t  min_aspect_num, min_aspect_den;
-			int32_t  max_aspect_num, max_aspect_den;
-			int32_t  base_width, base_height;
-			uint32_t win_gravity;
-		};
-
-		xcb_size_hints_t hints{};
-		hints.flags = XCB_SIZE_US_SIZE_HINT | XCB_SIZE_P_SIZE_HINT | XCB_SIZE_P_MIN_SIZE_HINT | XCB_SIZE_P_MAX_SIZE_HINT;
-		hints.min_width = width;
-		hints.max_width = width;
-		hints.min_height = height;
-		hints.max_height = height;
-
-		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
-		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
-							XCB_ATOM_WM_NORMAL_HINTS,
-							XCB_ATOM_WM_SIZE_HINTS,
-							32, sizeof(hints) / 4, &hints);
 
 		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
@@ -241,6 +181,9 @@ namespace sisskey
 		xcb_intern_atom_reply_t* reply2 = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, reply1->atom, 4, 32, 1, &reply2->atom);
 		m_CloseMessage = reply2->atom;
+
+		free(reply1);
+		free(reply2);
 
 		xcb_map_window(m_pConnection, m_Window);
 
@@ -290,11 +233,94 @@ namespace sisskey
 	{
 		auto [width, height] = size;
 
+		// to remove decorations
+		// https://stackoverflow.com/questions/28366896/how-to-remove-window-decorations-with-xcb
+
+		// to disable actions
+		// https://stackoverflow.com/questions/14442081/disable-actions-move-resize-minimize-etc-using-python-xlib/38175137#38175137
+		// https://specifications.freedesktop.org/wm-spec/1.3/ar01s05.html#id2523223
+
+		// TODO: 1) when fullscreen: use xcb/randr to determine/set output mode
+		// xrandr source: https://gitlab.freedesktop.org/xorg/app/xrandr
+		// randr docs: https://xcb.freedesktop.org/manual/group__XCB__RandR__API.html
+
+		// TODO: 2) fullscreen -> window transition
+		// _NET_WM_STATE magic: https://specifications.freedesktop.org/wm-spec/1.3/ar01s05.html#id2523223
+
+		enum
+		{
+			XCB_SIZE_US_POSITION_HINT = 1 << 0,
+			XCB_SIZE_US_SIZE_HINT = 1 << 1,
+			XCB_SIZE_P_POSITION_HINT = 1 << 2,
+			XCB_SIZE_P_SIZE_HINT = 1 << 3,
+			XCB_SIZE_P_MIN_SIZE_HINT = 1 << 4,
+			XCB_SIZE_P_MAX_SIZE_HINT = 1 << 5,
+			XCB_SIZE_P_RESIZE_INC_HINT = 1 << 6,
+			XCB_SIZE_P_ASPECT_HINT = 1 << 7,
+			XCB_SIZE_BASE_SIZE_HINT = 1 << 8,
+			XCB_SIZE_P_WIN_GRAVITY_HINT = 1 << 9
+		};
+
+		struct xcb_size_hints_t
+		{
+			uint32_t flags;
+			int32_t  x, y, width, height;
+			int32_t  min_width, min_height;
+			int32_t  max_width, max_height;
+			int32_t  width_inc, height_inc;
+			int32_t  min_aspect_num, min_aspect_den;
+			int32_t  max_aspect_num, max_aspect_den;
+			int32_t  base_width, base_height;
+			uint32_t win_gravity;
+		};
+
+		xcb_size_hints_t hints{};
+		hints.flags = XCB_SIZE_US_SIZE_HINT | XCB_SIZE_P_SIZE_HINT | XCB_SIZE_P_MIN_SIZE_HINT | XCB_SIZE_P_MAX_SIZE_HINT;
+		hints.min_width = width;
+		hints.max_width = width;
+		hints.min_height = height;
+		hints.max_height = height;
+		hints.win_gravity = XCB_GRAVITY_CENTER;
+
+		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
+		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
+							XCB_ATOM_WM_NORMAL_HINTS,
+							XCB_ATOM_WM_SIZE_HINTS,
+							32, sizeof(hints) / 4, &hints);
+
 		if (fullscreen)
 		{
+			xcb_intern_atom_cookie_t cookie1;
+			xcb_intern_atom_cookie_t cookie2;
+			xcb_intern_atom_reply_t* reply;
+			xcb_atom_t prop;
+			xcb_atom_t state;
+			static constexpr auto netWmState = "_NET_WM_STATE";
+			static constexpr auto netWmStateFullscreen = "_NET_WM_STATE_FULLSCREEN";
+
+			cookie1 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmState)), netWmState);
+			cookie2 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmStateFullscreen)), netWmStateFullscreen);;
+			reply = xcb_intern_atom_reply(m_pConnection, cookie1, nullptr);
+			prop = reply->atom;
+			free(reply);
+			reply = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
+			state = reply->atom;
+			free(reply);
+			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, prop, XCB_ATOM_ATOM, 32, 1, (const void*)& state);
 		}
-		else
-		{
-		}
+
+		xcb_flush(m_pConnection);
+	}
+
+	std::pair<int, int> WindowXCB::GetSize() const
+	{
+		xcb_get_geometry_cookie_t geomCookie = xcb_get_geometry(m_pConnection, m_Window);
+		xcb_get_geometry_reply_t* geom = xcb_get_geometry_reply(m_pConnection, geomCookie, nullptr);
+
+		auto ret = std::make_pair(geom->width, geom->height);
+
+		free(geom);
+
+		return ret;
 	}
 }
