@@ -64,6 +64,7 @@ namespace sisskey
 		bool m_CheckPhysicalDeviceExtensionSupport(vk::PhysicalDevice device);
 		static constexpr std::array m_PhysicalDeviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 																VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+																VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, // needed for VK_KHR_dedicated_allocation
 																// VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME // supported only on Windows :(
 																};
 

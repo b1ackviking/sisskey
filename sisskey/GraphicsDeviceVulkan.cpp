@@ -497,10 +497,7 @@ namespace sisskey
 
 	void GraphicsDeviceVulkan::m_CreateAllocator()
 	{
-		// TODO: dedicated allocation
-		VmaAllocatorCreateInfo allocatorInfo = {};
-		allocatorInfo.physicalDevice = m_physDevice;
-		allocatorInfo.device = m_device.get();
+		VmaAllocatorCreateInfo allocatorInfo{ VmaAllocatorCreateFlagBits::VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT, m_physDevice, m_device.get(), };
 		vmaCreateAllocator(&allocatorInfo, &m_vma);
 	}
 
