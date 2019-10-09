@@ -46,7 +46,7 @@ namespace sisskey
 		void m_CreateAllocator();
 
 		void m_CreateDepthStencilBuffer();
-		
+
 		void m_CreateRenderPass();
 		void m_CreateFrameBuffers();
 
@@ -62,7 +62,10 @@ namespace sisskey
 
 		QueueFamilyIndices m_GetQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface);
 		bool m_CheckPhysicalDeviceExtensionSupport(vk::PhysicalDevice device);
-		static constexpr std::array m_PhysicalDeviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME };
+		static constexpr std::array m_PhysicalDeviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+																VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+																// VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME // supported only on Windows :(
+																};
 
 		struct SwapChainSupportDetails
 		{

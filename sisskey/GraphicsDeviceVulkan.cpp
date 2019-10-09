@@ -6,6 +6,7 @@
 
 #include <set>
 #include <iostream>
+#include <cmath>
 
 // TODO: spdlog
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -338,7 +339,7 @@ namespace sisskey
 		std::vector<const char*> instanceLayers;
 
 		instanceExtentions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-		instanceExtentions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+		instanceExtentions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME); // needed for VK_EXT_full_screen_exclusive device extension
 #if defined(_WIN64)
 		instanceExtentions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #elif defined(__linux__)
@@ -437,7 +438,7 @@ namespace sisskey
 		m_GraphicsQueue = m_device->getQueue(m_QueueFamilyIndices.GraphicsFamily.value(), 0);
 		m_CopyQueue = m_device->getQueue(m_QueueFamilyIndices.CopyFamily.value(), m_QueueFamilyIndices.GraphicsFamily.value() == m_QueueFamilyIndices.CopyFamily.value() ? 1 : 0);
 	}
-	
+
 	void GraphicsDeviceVulkan::m_CreateSwapChain()
 	{
 		SwapChainSupportDetails SwapChainDetails = m_GetSwapChainSupport(m_physDevice, m_surface.get());
@@ -453,20 +454,20 @@ namespace sisskey
 		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
 
 		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(), m_BackBufferCount, SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE, m_swapchain.get() };
+		/*
+		// VK_EXT_full_screen_exclusive supported only on Windows :(
+		// saved this code as a reminder that extension exists
 		VkSurfaceFullScreenExclusiveInfoEXT fullscreenInfo{};
 		fullscreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
 		fullscreenInfo.fullScreenExclusive = VkFullScreenExclusiveEXT::VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
-		// TODO: NEEDED ??
-		/*
-#ifdef _WIN64
+#ifdef _WIN64 // TODO: NEEDED ??
 		VkSurfaceFullScreenExclusiveWin32InfoEXT win32fullscreenInfo{};
 		win32fullscreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT;
 		win32fullscreenInfo.hmonitor = MonitorFromWindow(std::get<HWND>(*std::static_pointer_cast<std::tuple<HWND, HINSTANCE>, void>(m_pWindow->GetNativeHandle())), MONITOR_DEFAULTTOPRIMARY);
 		fullscreenInfo.pNext = &win32fullscreenInfo;
 #endif
-		*/
 		swapchainInfo.pNext = &fullscreenInfo;
-
+		*/
 		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsFamily.value(), m_QueueFamilyIndices.PresentFamily.value() };
 		if (m_QueueFamilyIndices.PresentFamily != m_QueueFamilyIndices.GraphicsFamily)
 		{
@@ -491,15 +492,9 @@ namespace sisskey
 			m_sciv.push_back(m_device->createImageViewUnique(imageInfo));
 		}
 
-		// TODO: ??
-		/*if (m_PresentMode == PresentMode::Fullscreen)
-		{
-			m_device->acquireFullScreenExclusiveModeEXT(m_swapchain.get(), vk::DispatchLoaderDynamic(m_instance.get(), m_device.get()));
-		}*/
-
 		// TODO: recreate dependent objects ??
 	}
-	
+
 	void GraphicsDeviceVulkan::m_CreateAllocator()
 	{
 		// TODO: dedicated allocation
