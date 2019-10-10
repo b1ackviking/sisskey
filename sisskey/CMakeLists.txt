@@ -23,7 +23,7 @@ endif()
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 if (UNIX)
-	target_link_libraries(${PROJECT_NAME} PRIVATE xcb xcb-image)
+	target_link_libraries(${PROJECT_NAME} PRIVATE xcb xcb-image xcb-randr)
 elseif(WIN32)
 	target_link_libraries(${PROJECT_NAME} PRIVATE d3d12.lib dxgi.lib)
 endif()

@@ -4,7 +4,9 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <cassert>
 #include <xcb/xcb_image.h>
+#include <xcb/randr.h>
 
 namespace sisskey
 {
@@ -320,6 +322,55 @@ namespace sisskey
 		auto ret = std::make_pair(geom->width, geom->height);
 
 		free(geom);
+
+		return ret;
+	}
+
+	[[nodiscard]] std::vector<Window::DisplayMode> WindowXCB::EnumDisplayModes() const
+	{
+		std::vector<Window::DisplayMode> ret;
+
+		// code adopted from https://gitlab.freedesktop.org/xorg/app/xrandr/tree/master
+		// file: xrandr.c commit: 829ed54d89bb37c9e2f8050fe72bd4ecf7b5395a
+		// static double mode_refresh(const XRRModeInfo *mode_info) at lines 574-598
+		// refresh frequency in Hz
+		constexpr auto mode_refresh = [](const xcb_randr_mode_info_t* mode_info) -> double
+		{
+			double rate;
+			double vTotal = mode_info->vtotal;
+
+			// doublescan doubles the number of lines
+			if (mode_info->mode_flags & XCB_RANDR_MODE_FLAG_DOUBLE_SCAN)
+				vTotal *= 2;
+
+			// interlace splits the frame into two fields
+			// the field rate is what is typically reported by monitors
+			if (mode_info->mode_flags & XCB_RANDR_MODE_FLAG_INTERLACE)
+				vTotal /= 2;
+
+			if (mode_info->htotal && vTotal)
+				rate = (static_cast<double>(mode_info->dot_clock) / (static_cast<double>(mode_info->htotal) * static_cast<double>(vTotal)));
+			else
+				rate = .0;
+
+			return rate;
+		};
+
+		xcb_randr_get_screen_resources_current_cookie_t cookie = xcb_randr_get_screen_resources_current_unchecked(m_pConnection, m_Window);
+		xcb_randr_get_screen_resources_current_reply_t* reply = xcb_randr_get_screen_resources_current_reply(m_pConnection, cookie, nullptr);
+
+		xcb_randr_mode_info_iterator_t it = xcb_randr_get_screen_resources_current_modes_iterator(reply);
+		for(int i{ it.rem }; i > 0; --i)
+		{
+			ret.push_back({ { it.data->width, it.data->height }, static_cast<int>(mode_refresh(it.data)) });
+			xcb_randr_mode_info_next(&it);
+		}
+		assert(it.rem == 0);
+
+		free(reply);
+
+		// some info on CRTC
+		// https://stackoverflow.com/questions/22108822/how-do-i-get-the-resolution-of-randr-outputs-through-the-xcb-randr-extension
 
 		return ret;
 	}

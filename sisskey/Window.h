@@ -36,7 +36,7 @@ namespace sisskey
 		struct DisplayMode
 		{
 			std::pair<int, int> dimentions;
-			std::pair<int, int> refresh; // TODO: needed ??
+			int refresh; // TODO: needed ??
 
 			friend auto operator==(const DisplayMode& l, const DisplayMode& r) noexcept { return l.dimentions == r.dimentions && l.refresh == r.refresh; }
 		};

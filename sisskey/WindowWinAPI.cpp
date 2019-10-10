@@ -219,12 +219,12 @@ namespace sisskey
 		DEVMODEW devmode;
 		std::memset(&devmode, 0, sizeof(devmode));
 		devmode.dmSize = sizeof(devmode);
-		
+
 		// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaysettingsw
 		for (DWORD i{}; EnumDisplaySettingsW(nullptr, i, &devmode); ++i)
 		{
 			assert(devmode.dmDisplayFrequency && devmode.dmDisplayFrequency != 1);
-			ret.push_back({ { devmode.dmPelsWidth, devmode.dmPelsHeight }, { devmode.dmDisplayFrequency, 1 } });
+			ret.push_back({ { devmode.dmPelsWidth, devmode.dmPelsHeight }, devmode.dmDisplayFrequency });
 			std::memset(&devmode, 0, sizeof(devmode));
 			devmode.dmSize = sizeof(devmode);
 		}

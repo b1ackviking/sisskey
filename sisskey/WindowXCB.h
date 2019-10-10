@@ -21,8 +21,6 @@ namespace sisskey
 		WindowXCB(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor);
 		~WindowXCB();
 
-		// TODO: constness??
-
 		[[nodiscard]] PMResult ProcessMessages() noexcept final;
 		void SetTitle(std::string_view title) final;
 		[[nodiscard]] std::string GetTitle() const final;
@@ -34,7 +32,6 @@ namespace sisskey
 			return std::make_shared<std::tuple<xcb_connection_t*, xcb_window_t>>(m_pConnection, m_Window);
 		}
 
-		// TODO: unimplemented
-		[[nodiscard]] std::vector<DisplayMode> EnumDisplayModes() const final { return {}; }
+		[[nodiscard]] std::vector<DisplayMode> EnumDisplayModes() const final;
 	};
 }
