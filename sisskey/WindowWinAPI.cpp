@@ -224,7 +224,7 @@ namespace sisskey
 		for (DWORD i{}; EnumDisplaySettingsW(nullptr, i, &devmode); ++i)
 		{
 			assert(devmode.dmDisplayFrequency && devmode.dmDisplayFrequency != 1);
-			ret.push_back({ { devmode.dmPelsWidth, devmode.dmPelsHeight }, devmode.dmDisplayFrequency });
+			ret.push_back({ { devmode.dmPelsWidth, devmode.dmPelsHeight }, static_cast<int>(devmode.dmDisplayFrequency) });
 			std::memset(&devmode, 0, sizeof(devmode));
 			devmode.dmSize = sizeof(devmode);
 		}

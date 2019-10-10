@@ -8,7 +8,7 @@
 
 namespace sisskey
 {
-	[[nodiscard]] std::unique_ptr<GraphicsDevice> GraphicsDevice::Create(std::shared_ptr<Window> window, PresentMode mode, API api)
+	std::unique_ptr<GraphicsDevice> GraphicsDevice::Create(std::shared_ptr<Window> window, PresentMode mode, API api)
 	{
 		assert(window);
 #ifdef _WIN64
