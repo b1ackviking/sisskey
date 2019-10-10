@@ -42,5 +42,7 @@ namespace sisskey
 		{
 			return std::make_shared<std::tuple<HWND, HINSTANCE>>(m_hWnd, m_hInstance);
 		}
+
+		[[nodiscard]] std::vector<Window::DisplayMode> EnumDisplayModes() const final;
 	};
 }

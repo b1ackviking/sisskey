@@ -210,4 +210,27 @@ namespace sisskey
 			SendMessageW(m_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)IDI_APPLICATION);
 		}
 	}
+
+	std::vector<Window::DisplayMode> WindowWinAPI::EnumDisplayModes() const
+	{
+		std::vector<Window::DisplayMode> ret;
+
+		// https://docs.microsoft.com/ru-ru/windows/win32/api/wingdi/ns-wingdi-devmodew
+		DEVMODEW devmode;
+		std::memset(&devmode, 0, sizeof(devmode));
+		devmode.dmSize = sizeof(devmode);
+		
+		// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaysettingsw
+		for (DWORD i{}; EnumDisplaySettingsW(nullptr, i, &devmode); ++i)
+		{
+			assert(devmode.dmDisplayFrequency && devmode.dmDisplayFrequency != 1);
+			ret.push_back({ { devmode.dmPelsWidth, devmode.dmPelsHeight }, { devmode.dmDisplayFrequency, 1 } });
+			std::memset(&devmode, 0, sizeof(devmode));
+			devmode.dmSize = sizeof(devmode);
+		}
+
+		ret.erase(std::unique(ret.begin(), ret.end()), ret.end());
+
+		return ret;
+	}
 }

@@ -312,7 +312,7 @@ namespace sisskey
 		xcb_flush(m_pConnection);
 	}
 
-	std::pair<int, int> WindowXCB::GetSize() const
+	std::pair<int, int> WindowXCB::GetSize() const noexcept
 	{
 		xcb_get_geometry_cookie_t geomCookie = xcb_get_geometry(m_pConnection, m_Window);
 		xcb_get_geometry_reply_t* geom = xcb_get_geometry_reply(m_pConnection, geomCookie, nullptr);
