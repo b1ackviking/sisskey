@@ -475,7 +475,14 @@ namespace sisskey
 		m_SwapChainExtent.width = std::max(SwapChainDetails.Capabilities.minImageExtent.width, std::min(SwapChainDetails.Capabilities.maxImageExtent.width, static_cast<uint32_t>(m_Width)));
 		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
 
-		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(), m_BackBufferCount, SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform, vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE, m_swapchain.get() };
+		vk::SwapchainCreateInfoKHR swapchainInfo{ {}, m_surface.get(),
+												// for mailbox we need at least 3 swapchain images (driver creates 5)
+												(PresentMode == vk::PresentModeKHR::eMailbox && m_BackBufferCount == 2)
+												? static_cast<std::uint32_t>(m_BackBufferCount + 1)
+												: static_cast<std::uint32_t>(m_BackBufferCount),
+												SurfaceFormat.format, SurfaceFormat.colorSpace, m_SwapChainExtent, 1u, vk::ImageUsageFlagBits::eColorAttachment,
+												vk::SharingMode::eExclusive, VK_QUEUE_FAMILY_IGNORED, nullptr, SwapChainDetails.Capabilities.currentTransform,
+												vk::CompositeAlphaFlagBitsKHR::eOpaque, PresentMode, VK_TRUE, m_swapchain.get() };
 		/*
 		// VK_EXT_full_screen_exclusive supported only on Windows :(
 		// saved this code as a reminder that extension exists
@@ -501,7 +508,7 @@ namespace sisskey
 		m_swapchain = m_device->createSwapchainKHRUnique(swapchainInfo);
 
 		m_SwapChainImages = m_device->getSwapchainImagesKHR(m_swapchain.get());
-		assert(m_SwapChainImages.size() == m_BackBufferCount);
+		assert(m_SwapChainImages.size() >= m_BackBufferCount); // Vulkan creates AT LEAST minImageCount images
 
 		m_SwapChainImageFormat = SurfaceFormat.format;
 
@@ -578,7 +585,8 @@ namespace sisskey
 		// Destroy previously created framebuffers
 		m_fb.clear();
 
-		for (int i{}; i < m_BackBufferCount; ++i)
+		// we need as many framebuffers as there are swapchain images
+		for (int i{}; i < m_SwapChainImages.size(); ++i)
 		{
 			std::array imv{ m_sciv[i].get(), m_dsv.get() };
 
