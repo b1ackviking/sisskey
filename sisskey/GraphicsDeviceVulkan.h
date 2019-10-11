@@ -52,11 +52,13 @@ namespace sisskey
 
 		struct QueueFamilyIndices
 		{
-			std::optional<std::uint32_t> GraphicsFamily;
-			std::optional<std::uint32_t> PresentFamily;
-			std::optional<std::uint32_t> CopyFamily;
+			// NOTE: store both (1) index of a family and (2) index of a queue inside that family
+			using family_and_index = std::optional<std::pair<std::uint32_t, std::uint32_t>>;
+			family_and_index GraphicsQueue;
+			family_and_index PresentQueue;
+			family_and_index CopyQueue;
 
-			constexpr bool Filled() const noexcept { return GraphicsFamily.has_value() && PresentFamily.has_value() && CopyFamily.has_value(); }
+			constexpr bool Filled() const noexcept { return GraphicsQueue.has_value() && PresentQueue.has_value() && CopyQueue.has_value(); }
 		};
 		QueueFamilyIndices m_QueueFamilyIndices{};
 

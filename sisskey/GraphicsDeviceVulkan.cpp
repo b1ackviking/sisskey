@@ -432,18 +432,16 @@ namespace sisskey
 		m_physDevice = *it;
 	}
 
-	// TODO: broken
-	// need: enum queue caps
-	// need: struct queue caps, family index, queue index
 	void GraphicsDeviceVulkan::m_CreateLogicalDevice()
 	{
-		std::set queueFamilies{ m_QueueFamilyIndices.PresentFamily.value(), m_QueueFamilyIndices.GraphicsFamily.value(), m_QueueFamilyIndices.CopyFamily.value() };
-		float queuePriority{ 1.f };
+		std::multiset queueFamilies{ m_QueueFamilyIndices.GraphicsQueue->first, m_QueueFamilyIndices.CopyQueue->first, m_QueueFamilyIndices.PresentQueue->first };
+		std::set uniqueFamilies(queueFamilies.begin(), queueFamilies.end()); // NOTE: be sure to invoke ctor with 2 iterators insted of creating set of iterators
+		const float queuePriorities[]{ 1.f, 1.f, 1.f }; // NOTE: we need at most 3 value in order to create 3 queues
 
 		std::vector<vk::DeviceQueueCreateInfo> queueInfos;
-		for (auto familyIndex : queueFamilies)
+		for (auto familyIndex : uniqueFamilies)
 		{
-			vk::DeviceQueueCreateInfo queueInfo{ {}, familyIndex, 1, &queuePriority };
+			vk::DeviceQueueCreateInfo queueInfo{ {}, familyIndex, static_cast<std::uint32_t>(queueFamilies.count(familyIndex)), queuePriorities };
 			queueInfos.push_back(queueInfo);
 		}
 
@@ -452,13 +450,13 @@ namespace sisskey
 		vk::DeviceCreateInfo deviceInfo{ {}, static_cast<std::uint32_t>(queueInfos.size()), queueInfos.data(),
 										0, nullptr,
 										static_cast<std::uint32_t>(m_PhysicalDeviceExtensions.size()), m_PhysicalDeviceExtensions.data(),
-										& pdevFeatures };
+										&pdevFeatures };
 
 		m_device = m_physDevice.createDeviceUnique(deviceInfo);
 
-		m_PresentQueue = m_device->getQueue(m_QueueFamilyIndices.PresentFamily.value(), 0);
-		m_GraphicsQueue = m_device->getQueue(m_QueueFamilyIndices.GraphicsFamily.value(), 0);
-		m_CopyQueue = m_device->getQueue(m_QueueFamilyIndices.CopyFamily.value(), m_QueueFamilyIndices.GraphicsFamily.value() == m_QueueFamilyIndices.CopyFamily.value() ? 1 : 0);
+		m_GraphicsQueue = m_device->getQueue(m_QueueFamilyIndices.GraphicsQueue->first, m_QueueFamilyIndices.GraphicsQueue->second);
+		m_CopyQueue = m_device->getQueue(m_QueueFamilyIndices.CopyQueue->first, m_QueueFamilyIndices.CopyQueue->second);
+		m_PresentQueue = m_device->getQueue(m_QueueFamilyIndices.PresentQueue->first, m_QueueFamilyIndices.PresentQueue->second);
 	}
 
 	void GraphicsDeviceVulkan::m_CreateSwapChain()
@@ -497,8 +495,8 @@ namespace sisskey
 #endif
 		swapchainInfo.pNext = &fullscreenInfo;
 		*/
-		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsFamily.value(), m_QueueFamilyIndices.PresentFamily.value() };
-		if (m_QueueFamilyIndices.PresentFamily != m_QueueFamilyIndices.GraphicsFamily)
+		std::array queueFamilyIndices{ m_QueueFamilyIndices.GraphicsQueue->first, m_QueueFamilyIndices.PresentQueue->first };
+		if (queueFamilyIndices[0] != queueFamilyIndices[1])
 		{
 			swapchainInfo.imageSharingMode = vk::SharingMode::eConcurrent;
 			swapchainInfo.queueFamilyIndexCount = 2;
@@ -601,28 +599,20 @@ namespace sisskey
 
 		auto Families = pdev.getQueueFamilyProperties();
 
-		std::uint32_t i{};
-		for (auto& Family : Families)
+		for (int i{}; i < Families.size(); ++i)
 		{
-			if (Family.queueCount > 0 && pdev.getSurfaceSupportKHR(i, surface) && !res.PresentFamily)
-				res.PresentFamily = i;
-
-			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eGraphics && !res.GraphicsFamily)
+			for (std::uint32_t j{}; j < Families[i].queueCount; ++j)
 			{
-				res.GraphicsFamily = i;
-				--Family.queueCount;
+				if (!res.GraphicsQueue && Families[i].queueFlags & vk::QueueFlagBits::eGraphics)
+					res.GraphicsQueue = { i, j };
+				else if (!res.CopyQueue && Families[i].queueFlags & vk::QueueFlagBits::eTransfer)
+					res.CopyQueue = { i, j };
+				else if (!res.PresentQueue && pdev.getSurfaceSupportKHR(i, surface))
+					res.PresentQueue = { i, j };
+
+				if (res.Filled())
+					return res;
 			}
-
-			if (Family.queueCount > 0 && Family.queueFlags & vk::QueueFlagBits::eTransfer && !res.CopyFamily)
-			{
-				res.CopyFamily = i;
-				--Family.queueCount;
-			}
-
-			if (res.Filled())
-				break;
-
-			i++;
 		}
 
 		return res;
@@ -696,7 +686,7 @@ namespace sisskey
 
 		m_sem = m_device->createSemaphoreUnique({});
 
-		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsFamily.value() };
+		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsQueue->first };
 		m_pool = m_device->createCommandPoolUnique(poolInfo);
 
 		vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
