@@ -16,32 +16,33 @@
 #include <set>
 #include <cmath>
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-													VkDebugUtilsMessageTypeFlagsEXT messageType,
-													const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-													void* pUserData)
-{
-	auto type = messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT ? "VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL" :
-		messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ? "VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE" :
-		"VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION";
-	switch (messageSeverity)
-	{
-	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-		spdlog::info("[{}] {}", type, pCallbackData->pMessage);
-		break;
-	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-		spdlog::warn("[{}] {}", type, pCallbackData->pMessage);
-		break;
-	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-		spdlog::error("[{}] {}", type, pCallbackData->pMessage);
-		break;
-	}
-	return VK_FALSE;
-}
-
 namespace sisskey
 {
+#ifndef NDEBUG
+	VKAPI_ATTR VkBool32 VKAPI_CALL GraphicsDeviceVulkan::m_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+																		VkDebugUtilsMessageTypeFlagsEXT messageType,
+																		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+																		void* pUserData)
+	{
+		auto type = messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT ? "VK_GENERAL" :
+				messageType == VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ? "VK_PERFORMANCE" : "VK_VALIDATION";
+		switch (messageSeverity)
+		{
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+			spdlog::info("[{}] {}", type, pCallbackData->pMessage);
+			break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+			spdlog::warn("[{}] {}", type, pCallbackData->pMessage);
+			break;
+		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+			spdlog::error("[{}] {}", type, pCallbackData->pMessage);
+			break;
+		}
+		return VK_FALSE;
+	}
+#endif // !NDEBUG
+
 	namespace Graphics
 	{
 		inline vk::ColorComponentFlags VK_ColorWriteMask(COLOR_WRITE_ENABLE value)
@@ -380,6 +381,8 @@ namespace sisskey
 		m_instance = vk::createInstanceUnique(instanceInfo);
 
 #ifndef NDEBUG
+		m_loader.init(m_instance.get());
+
 		auto severityFlags = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
 			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
 			| vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
@@ -389,7 +392,7 @@ namespace sisskey
 			| vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
 			| vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 
-		auto messenger = m_instance->createDebugUtilsMessengerEXTUnique({ {}, severityFlags, typeFlags, debugCallback }, nullptr, vk::DispatchLoaderDynamic(m_instance.get()));
+		m_messenger = m_instance->createDebugUtilsMessengerEXTUnique({ {}, severityFlags, typeFlags, m_DebugCallback }, nullptr, m_loader);
 #endif // NDEBUG
 	}
 

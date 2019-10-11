@@ -95,6 +95,19 @@ namespace sisskey
 
 		std::vector<vk::UniqueFramebuffer> m_fb;
 
+#ifndef NDEBUG
+		vk::DispatchLoaderDynamic m_loader;
+
+		using vkUniqueDebugUtilsMessengerEXT = vk::UniqueHandle<vk::DebugUtilsMessengerEXT, vk::DispatchLoaderDynamic>;
+		vkUniqueDebugUtilsMessengerEXT m_messenger;
+
+		static VKAPI_ATTR VkBool32 VKAPI_CALL m_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+															VkDebugUtilsMessageTypeFlagsEXT messageType,
+															const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+															void* pUserData);
+#endif // !NDEBUG
+
+
 	public:
 		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceVulkan();
