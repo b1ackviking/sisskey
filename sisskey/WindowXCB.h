@@ -3,6 +3,7 @@
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_atom.h>
+#include <xcb/randr.h>
 
 namespace sisskey
 {
@@ -16,6 +17,13 @@ namespace sisskey
 		xcb_connection_t* m_pConnection{ nullptr };
 		xcb_window_t m_Window{};
 
+		bool m_Fullscreen{ false };
+		xcb_randr_mode_t m_CRTCMode{};
+
+		// returns CRTC of a primary output
+		xcb_randr_crtc_t m_GetCRTC();
+		// returns previous CRTC mode
+		xcb_randr_mode_t m_SetCRTCMode(xcb_randr_crtc_t crtc, xcb_randr_mode_t mode);
 
 	public:
 		WindowXCB(std::string_view title, std::pair<int, int> size, std::pair<int, int> position, bool fullscreen, bool cursor);

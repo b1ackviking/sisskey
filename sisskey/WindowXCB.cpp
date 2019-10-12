@@ -1,12 +1,11 @@
 #include "WindowXCB.h"
+#include <xcb/xcb_image.h>
 
 #include <stdexcept>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <cassert>
-#include <xcb/xcb_image.h>
-#include <xcb/randr.h>
 
 namespace sisskey
 {
@@ -155,8 +154,7 @@ namespace sisskey
 						  pScreen->root_visual,
 						  mask, values);
 
-		ChangeResolution({ width,height }, fullscreen);
-
+		ChangeResolution({ width, height }, fullscreen);
 
 		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
@@ -177,8 +175,10 @@ namespace sisskey
 		// https://stackoverflow.com/questions/8776300/how-to-exit-program-with-close-button-in-xcb
 		// https://marc.info/?l=freedesktop-xcb&m=129381953404497
 		// https://tronche.com/gui/x/icccm/sec-4.html#s-4.2.8.1
-		xcb_intern_atom_cookie_t cookie1 = xcb_intern_atom(m_pConnection, 1, static_cast<uint16_t>(strlen("WM_PROTOCOLS")), "WM_PROTOCOLS");
-		xcb_intern_atom_cookie_t cookie2 = xcb_intern_atom(m_pConnection, 0, static_cast<uint16_t>(strlen("WM_DELETE_WINDOW")), "WM_DELETE_WINDOW");
+		constexpr auto WmProtocols = "WM_PROTOCOLS";
+		constexpr auto WmDeleteWindow = "WM_DELETE_WINDOW";
+		xcb_intern_atom_cookie_t cookie1 = xcb_intern_atom(m_pConnection, 1, static_cast<uint16_t>(strlen(WmProtocols)), WmProtocols);
+		xcb_intern_atom_cookie_t cookie2 = xcb_intern_atom(m_pConnection, 0, static_cast<uint16_t>(strlen(WmDeleteWindow)), WmDeleteWindow);
 		xcb_intern_atom_reply_t* reply1 = xcb_intern_atom_reply(m_pConnection, cookie1, nullptr);
 		xcb_intern_atom_reply_t* reply2 = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
 		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, reply1->atom, 4, 32, 1, &reply2->atom);
@@ -194,6 +194,10 @@ namespace sisskey
 
 	WindowXCB::~WindowXCB()
 	{
+		// restore CRTCMode
+		if(m_CRTCMode)
+			m_SetCRTCMode(m_GetCRTC(), m_CRTCMode);
+
 		UseSystemCursor(true);
 		if (m_NullCursor)
 			xcb_free_cursor(m_pConnection, m_NullCursor);
@@ -231,84 +235,186 @@ namespace sisskey
 		else xcb_change_window_attributes(m_pConnection, m_Window, XCB_CW_CURSOR, &m_NullCursor);
 	}
 
+	xcb_randr_crtc_t WindowXCB::m_GetCRTC()
+	{
+		// assume the window is located on the primary output
+		xcb_randr_get_output_primary_cookie_t opc = xcb_randr_get_output_primary_unchecked(m_pConnection, m_Window);
+		xcb_randr_get_output_primary_reply_t* opr = xcb_randr_get_output_primary_reply(m_pConnection, opc, nullptr);
+		xcb_randr_output_t output = opr->output;
+		free(opr);
+
+		xcb_randr_get_output_info_cookie_t omc = xcb_randr_get_output_info(m_pConnection, output, XCB_CURRENT_TIME);
+		xcb_randr_get_output_info_reply_t* omr = xcb_randr_get_output_info_reply(m_pConnection, omc, nullptr);
+		xcb_randr_crtc_t ret = omr->crtc;
+		free(omr);
+
+		return ret;
+	}
+
+	xcb_randr_mode_t WindowXCB::m_SetCRTCMode(xcb_randr_crtc_t crtc, xcb_randr_mode_t mode)
+	{
+		xcb_randr_get_crtc_info_cookie_t cic = xcb_randr_get_crtc_info(m_pConnection, crtc, XCB_CURRENT_TIME);
+		xcb_randr_get_crtc_info_reply_t* cir = xcb_randr_get_crtc_info_reply(m_pConnection, cic, nullptr);
+
+		xcb_randr_mode_t ret = cir->mode;
+
+		xcb_randr_output_t* couts = xcb_randr_get_crtc_info_outputs(cir);
+
+		xcb_randr_set_crtc_config_cookie_t sccc = xcb_randr_set_crtc_config(m_pConnection, crtc, XCB_CURRENT_TIME, cir->timestamp, cir->x, cir->y, mode, cir->rotation, cir->num_outputs, couts);
+		free(cir);
+		xcb_randr_set_crtc_config_reply_t* sccr = xcb_randr_set_crtc_config_reply(m_pConnection, sccc, nullptr);
+		free(sccr);
+
+		xcb_flush(m_pConnection);
+
+		return ret;
+	}
+
 	void WindowXCB::ChangeResolution(std::pair<int, int> size, bool fullscreen)
 	{
 		auto [width, height] = size;
 
-		// to remove decorations
-		// https://stackoverflow.com/questions/28366896/how-to-remove-window-decorations-with-xcb
+		// Documentation:
+		// https://standards.freedesktop.org/wm-spec/wm-spec-latest.html
 
-		// to disable actions
-		// https://stackoverflow.com/questions/14442081/disable-actions-move-resize-minimize-etc-using-python-xlib/38175137#38175137
-		// https://specifications.freedesktop.org/wm-spec/1.3/ar01s05.html#id2523223
-
-		// TODO: 1) when fullscreen: use xcb/randr to determine/set output mode
-		// xrandr source: https://gitlab.freedesktop.org/xorg/app/xrandr
-		// randr docs: https://xcb.freedesktop.org/manual/group__XCB__RandR__API.html
-
-		// TODO: 2) fullscreen -> window transition
-		// _NET_WM_STATE magic: https://specifications.freedesktop.org/wm-spec/1.3/ar01s05.html#id2523223
-
-		enum
+		auto applySizeHints = [this](std::int32_t width, std::int32_t height, bool fullscreen)
 		{
-			XCB_SIZE_US_POSITION_HINT = 1 << 0,
-			XCB_SIZE_US_SIZE_HINT = 1 << 1,
-			XCB_SIZE_P_POSITION_HINT = 1 << 2,
-			XCB_SIZE_P_SIZE_HINT = 1 << 3,
-			XCB_SIZE_P_MIN_SIZE_HINT = 1 << 4,
-			XCB_SIZE_P_MAX_SIZE_HINT = 1 << 5,
-			XCB_SIZE_P_RESIZE_INC_HINT = 1 << 6,
-			XCB_SIZE_P_ASPECT_HINT = 1 << 7,
-			XCB_SIZE_BASE_SIZE_HINT = 1 << 8,
-			XCB_SIZE_P_WIN_GRAVITY_HINT = 1 << 9
+			enum
+			{
+				XCB_SIZE_US_POSITION_HINT = 1 << 0,
+				XCB_SIZE_US_SIZE_HINT = 1 << 1,
+				XCB_SIZE_P_POSITION_HINT = 1 << 2,
+				XCB_SIZE_P_SIZE_HINT = 1 << 3,
+				XCB_SIZE_P_MIN_SIZE_HINT = 1 << 4,
+				XCB_SIZE_P_MAX_SIZE_HINT = 1 << 5,
+				XCB_SIZE_P_RESIZE_INC_HINT = 1 << 6,
+				XCB_SIZE_P_ASPECT_HINT = 1 << 7,
+				XCB_SIZE_BASE_SIZE_HINT = 1 << 8,
+				XCB_SIZE_P_WIN_GRAVITY_HINT = 1 << 9
+			};
+
+			struct xcb_size_hints_t
+			{
+				uint32_t flags;
+				int32_t  x, y, width, height;
+				int32_t  min_width, min_height;
+				int32_t  max_width, max_height;
+				int32_t  width_inc, height_inc;
+				int32_t  min_aspect_num, min_aspect_den;
+				int32_t  max_aspect_num, max_aspect_den;
+				int32_t  base_width, base_height;
+				uint32_t win_gravity;
+			};
+
+			// window must be resizeable to switch between normal and fullsceen mode
+			const std::int32_t offset = fullscreen ? 1 : 0;
+			xcb_size_hints_t hints{};
+			hints.flags = XCB_SIZE_US_SIZE_HINT | XCB_SIZE_P_SIZE_HINT | XCB_SIZE_P_MIN_SIZE_HINT | XCB_SIZE_P_MAX_SIZE_HINT | XCB_SIZE_P_WIN_GRAVITY_HINT;
+			hints.width = width;
+			hints.min_width = width - offset;
+			hints.max_width = width + offset;
+			hints.height = height;
+			hints.min_height = height - offset;
+			hints.max_height = height + offset;
+			hints.win_gravity = XCB_GRAVITY_CENTER;
+
+			// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
+			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
+								XCB_ATOM_WM_NORMAL_HINTS,
+								XCB_ATOM_WM_SIZE_HINTS,
+								32, sizeof(hints) / 4, &hints);
 		};
 
-		struct xcb_size_hints_t
+		enum class Transition { ToFullscreen, FromFullscreen };
+		auto transition = [this](Transition dir)
 		{
-			uint32_t flags;
-			int32_t  x, y, width, height;
-			int32_t  min_width, min_height;
-			int32_t  max_width, max_height;
-			int32_t  width_inc, height_inc;
-			int32_t  min_aspect_num, min_aspect_den;
-			int32_t  max_aspect_num, max_aspect_den;
-			int32_t  base_width, base_height;
-			uint32_t win_gravity;
-		};
-
-		xcb_size_hints_t hints{};
-		hints.flags = XCB_SIZE_US_SIZE_HINT | XCB_SIZE_P_SIZE_HINT | XCB_SIZE_P_MIN_SIZE_HINT | XCB_SIZE_P_MAX_SIZE_HINT;
-		hints.min_width = width;
-		hints.max_width = width;
-		hints.min_height = height;
-		hints.max_height = height;
-		hints.win_gravity = XCB_GRAVITY_CENTER;
-
-		// https://www.x.org/releases/current/doc/man/man3/xcb_change_property.3.xhtml
-		xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window,
-							XCB_ATOM_WM_NORMAL_HINTS,
-							XCB_ATOM_WM_SIZE_HINTS,
-							32, sizeof(hints) / 4, &hints);
-
-		if (fullscreen)
-		{
-			xcb_intern_atom_cookie_t cookie1;
-			xcb_intern_atom_cookie_t cookie2;
+			constexpr auto netWmState{ "_NET_WM_STATE" };
+			constexpr auto netWmStateFullscreen{ "_NET_WM_STATE_FULLSCREEN" };
+			constexpr auto netWmStateRemove{ 0u };
+			constexpr auto netWmStateAdd{ 1u };
+			constexpr auto netWmStateToggle{ 2u };
 			xcb_intern_atom_reply_t* reply;
 			xcb_atom_t prop;
 			xcb_atom_t state;
-			static constexpr auto netWmState = "_NET_WM_STATE";
-			static constexpr auto netWmStateFullscreen = "_NET_WM_STATE_FULLSCREEN";
 
-			cookie1 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmState)), netWmState);
-			cookie2 = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmStateFullscreen)), netWmStateFullscreen);;
-			reply = xcb_intern_atom_reply(m_pConnection, cookie1, nullptr);
+			xcb_intern_atom_cookie_t wm_state_ck = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmState)), netWmState);
+			xcb_intern_atom_cookie_t wm_state_fs_ck = xcb_intern_atom_unchecked(m_pConnection, 0, static_cast<std::uint16_t>(strlen(netWmStateFullscreen)), netWmStateFullscreen);
+			reply = xcb_intern_atom_reply(m_pConnection, wm_state_ck, nullptr);
 			prop = reply->atom;
 			free(reply);
-			reply = xcb_intern_atom_reply(m_pConnection, cookie2, nullptr);
+			reply = xcb_intern_atom_reply(m_pConnection, wm_state_fs_ck, nullptr);
 			state = reply->atom;
 			free(reply);
-			xcb_change_property(m_pConnection, XCB_PROP_MODE_REPLACE, m_Window, prop, XCB_ATOM_ATOM, 32, 1, (const void*)& state);
+
+			xcb_client_message_event_t ev;
+			std::memset (&ev, 0, sizeof(ev));
+			ev.response_type = XCB_CLIENT_MESSAGE;
+			ev.type = prop;
+			ev.format = 32;
+			ev.window = m_Window;
+			ev.data.data32[0] = dir == Transition::ToFullscreen ? netWmStateAdd : netWmStateRemove;
+			ev.data.data32[1] = state;
+			ev.data.data32[2] = XCB_ATOM_NONE;
+			ev.data.data32[3] = 0;
+			ev.data.data32[4] = 0;
+
+			// xcb_send_event(m_pConnection, 1, m_Window, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY, (const char*)(&ev));
+			xcb_send_event(m_pConnection, 1, xcb_setup_roots_iterator(xcb_get_setup(m_pConnection)).data->root, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY, (const char*)(&ev));
+		};
+
+		if(fullscreen)
+		{
+			xcb_randr_crtc_t crtc = m_GetCRTC();
+
+			xcb_randr_get_screen_resources_current_cookie_t srcc = xcb_randr_get_screen_resources_current(m_pConnection, m_Window);
+			xcb_randr_get_screen_resources_current_reply_t* srcr = xcb_randr_get_screen_resources_current_reply(m_pConnection, srcc, nullptr);
+			xcb_randr_mode_info_iterator_t mit = xcb_randr_get_screen_resources_current_modes_iterator(srcr);
+			int ml = xcb_randr_get_screen_resources_current_modes_length(srcr);
+			free(srcr);
+
+			// store the first mode
+			xcb_randr_mode_t m = mit.data->id;
+			std::uint16_t w{ mit.data->width }, h{ mit.data->height };
+
+			xcb_randr_mode_t id{};
+
+			for(int i{}; i < ml; xcb_randr_mode_info_next(&mit), ++i)
+			{
+				if(width == mit.data->width && height == mit.data->height)
+				{
+					id = mit.data->id;
+					break;
+				}
+			}
+
+			if(!id)
+			{
+				id = m;
+				width = w;
+				height = h;
+			}
+
+			auto prevmode = m_SetCRTCMode(crtc, id);
+			m_CRTCMode = m_Fullscreen ? m_CRTCMode : prevmode;
+
+			applySizeHints(width, height, true);
+
+			if(m_Fullscreen)
+				transition(Transition::FromFullscreen);
+
+			transition(Transition::ToFullscreen);
+			m_Fullscreen = true;
+		}
+		else
+		{
+			if(m_CRTCMode)
+				m_SetCRTCMode(m_GetCRTC(), m_CRTCMode);
+
+			if(m_Fullscreen)
+				transition(Transition::FromFullscreen);
+
+			applySizeHints(width, height, false);
+			m_Fullscreen = false;
 		}
 
 		xcb_flush(m_pConnection);
@@ -326,7 +432,7 @@ namespace sisskey
 		return ret;
 	}
 
-	[[nodiscard]] std::vector<Window::DisplayMode> WindowXCB::EnumDisplayModes() const
+	std::vector<Window::DisplayMode> WindowXCB::EnumDisplayModes() const
 	{
 		std::vector<Window::DisplayMode> ret;
 
