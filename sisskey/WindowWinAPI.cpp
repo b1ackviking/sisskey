@@ -84,10 +84,9 @@ namespace sisskey
 			DEVMODEW dmScreenSettings;
 			std::memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
-			dmScreenSettings.dmBitsPerPel = 32;
 			dmScreenSettings.dmPelsWidth = static_cast<DWORD>(width);
 			dmScreenSettings.dmPelsHeight = static_cast<DWORD>(height);
-			dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
+			dmScreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
 
 			ChangeDisplaySettingsW(&dmScreenSettings, CDS_FULLSCREEN);
 
@@ -96,7 +95,7 @@ namespace sisskey
 		else
 		{
 			RECT WindowRect{ 0, 0, width, height };
-			AdjustWindowRect(&WindowRect, WS_OVERLAPPEDWINDOW, FALSE);
+			assert(AdjustWindowRect(&WindowRect, WS_OVERLAPPEDWINDOW, FALSE));
 			int WindowWidth = WindowRect.right - WindowRect.left;
 			int WindowHeight = WindowRect.bottom - WindowRect.top;
 
@@ -104,6 +103,7 @@ namespace sisskey
 			int WindowX = x == -1 ? (GetSystemMetrics(SM_CXSCREEN) - WindowWidth) / 2 : x;
 			int WindowY = y == -1 ? (GetSystemMetrics(SM_CYSCREEN) - WindowHeight) / 2 : y;
 
+			// NOTE: if we try to create window that client area covers full screen CreateWindowEx silently truncates it to some maximum size
 			m_hWnd = CreateWindowExW(0, m_WndClassName.c_str(), m_WndClassName.c_str(), WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_VISIBLE | WS_OVERLAPPED | WS_BORDER | WS_SYSMENU | WS_MINIMIZEBOX | WS_CAPTION, WindowX, WindowY, WindowWidth, WindowHeight, nullptr, nullptr, m_hInstance, this);
 		}
 
@@ -166,10 +166,9 @@ namespace sisskey
 			DEVMODEW dmScreenSettings;
 			std::memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));
 			dmScreenSettings.dmSize = sizeof(dmScreenSettings);
-			dmScreenSettings.dmBitsPerPel = 32;
 			dmScreenSettings.dmPelsWidth = static_cast<DWORD>(width);
 			dmScreenSettings.dmPelsHeight = static_cast<DWORD>(height);
-			dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
+			dmScreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
 
 			ChangeDisplaySettingsW(&dmScreenSettings, CDS_FULLSCREEN);
 
@@ -230,6 +229,7 @@ namespace sisskey
 		}
 
 		ret.erase(std::unique(ret.begin(), ret.end()), ret.end());
+		std::reverse(ret.begin(), ret.end());
 
 		return ret;
 	}

@@ -38,6 +38,7 @@ namespace sisskey
 		vk::UniqueFence m_fence;
 		vk::UniqueSemaphore m_sem;
 
+		void m_SetWidthHeight(); // TODO: should this be in a base class ??
 		void m_CreateInstance();
 		void m_CreateSurface();
 		void m_CreatePhysicalDevice();

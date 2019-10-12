@@ -355,6 +355,33 @@ namespace sisskey
 		}
 	}
 
+	void GraphicsDeviceVulkan::m_SetWidthHeight()
+	{
+		auto [w, h] = m_pWindow->GetSize();
+		if (m_PresentMode != PresentMode::Windowed)
+		{
+			auto dms = m_pWindow->EnumDisplayModes();
+
+			auto it = std::find_if(dms.begin(), dms.end(), [w, h](const auto& m) {return w == m.dimentions.first && h == m.dimentions.second; });
+			if (it != dms.end())
+			{
+				m_Width = w;
+				m_Height = h;
+			}
+			else
+			{
+				m_Width = dms[0].dimentions.first;
+				m_Height = dms[0].dimentions.second;
+			}
+			m_pWindow->ChangeResolution({ m_Width, m_Height }, true);
+		}
+		else
+		{
+			m_Width = w;
+			m_Height = h;
+		}
+	}
+
 	void GraphicsDeviceVulkan::m_CreateInstance()
 	{
 		vk::ApplicationInfo appInfo{ u8"sisskey game", VK_MAKE_VERSION(1,0,0), u8"sisskey", VK_MAKE_VERSION(1,0,0), VK_API_VERSION_1_1 };
@@ -467,11 +494,6 @@ namespace sisskey
 		SwapChainSupportDetails SwapChainDetails = m_GetSwapChainSupport(m_physDevice, m_surface.get());
 		vk::SurfaceFormatKHR SurfaceFormat = m_ChooseSwapSurfaceFormat(SwapChainDetails.Formats);
 		vk::PresentModeKHR PresentMode = m_ChooseSwapPresentMode(SwapChainDetails.PresentModes);
-
-		// TODO: size ? fullscreen ? mode
-		auto [w, h] = m_pWindow->GetSize();
-		m_Width = w;
-		m_Height = h;
 
 		m_SwapChainExtent.width = std::max(SwapChainDetails.Capabilities.minImageExtent.width, std::min(SwapChainDetails.Capabilities.maxImageExtent.width, static_cast<uint32_t>(m_Width)));
 		m_SwapChainExtent.height = std::max(SwapChainDetails.Capabilities.minImageExtent.height, std::min(SwapChainDetails.Capabilities.maxImageExtent.height, static_cast<uint32_t>(m_Height)));
@@ -674,6 +696,7 @@ namespace sisskey
 	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
+		m_SetWidthHeight(); // NOTE: it is important to set width and height of the window before creating surface
 		m_CreateInstance();
 		m_CreateSurface();
 		m_CreatePhysicalDevice();

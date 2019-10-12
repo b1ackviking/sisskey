@@ -39,7 +39,7 @@ namespace sisskey
 		PresentMode m_PresentMode{ PresentMode::Windowed };
 		bool m_TearingSupport{ false };
 		bool m_VSync{ true };
-		bool m_Fullscreen{ false };
+		// bool m_Fullscreen{ false }; // TODO: unused
 
 	public:
 		virtual ~GraphicsDevice() = default;
