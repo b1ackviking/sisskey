@@ -16,6 +16,9 @@
 #include <set>
 #include <cmath>
 
+#include <fstream>
+#include <filesystem>
+
 namespace sisskey
 {
 #ifndef NDEBUG
@@ -45,6 +48,20 @@ namespace sisskey
 
 	namespace Graphics
 	{
+		constexpr inline vk::PrimitiveTopology VK_PrimitiveTopology(PRIMITIVE_TOPOLOGY value)
+		{
+			switch (value)
+			{
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::UNDEFINED:		return vk::PrimitiveTopology::ePointList;
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::TRIANGLELIST:	return vk::PrimitiveTopology::eTriangleList;
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::TRIANGLESTRIP:	return vk::PrimitiveTopology::eTriangleStrip;
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::POINTLIST:		return vk::PrimitiveTopology::ePointList;
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::LINELIST:		return vk::PrimitiveTopology::eLineList;
+			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::PATCHLIST:		return vk::PrimitiveTopology::ePatchList;
+			default:													return vk::PrimitiveTopology::ePointList;
+			}
+		}
+
 		inline vk::ColorComponentFlags VK_ColorWriteMask(COLOR_WRITE_ENABLE value)
 		{
 			vk::ColorComponentFlags flag{};
@@ -353,6 +370,11 @@ namespace sisskey
 			default:									return FORMAT::UNKNOWN;
 			}
 		}
+
+		inline vk::Viewport VK_Viewport(Viewport vp)
+		{
+			return { vp.TopLeftX, vp.TopLeftY + vp.Height, vp.Width, -vp.Height, vp.MinDepth, vp.MaxDepth };
+		}
 	}
 
 	void GraphicsDeviceVulkan::m_SetWidthHeight()
@@ -618,6 +640,66 @@ namespace sisskey
 		}
 	}
 
+	void GraphicsDeviceVulkan::m_CreateGraphicsPipeline()
+	{
+		const auto readFile = [](std::filesystem::path path) -> std::vector<std::byte>
+		{
+			std::basic_ifstream<std::byte> file{ path, std::ios::binary };
+			if (!file.is_open())
+				throw std::runtime_error{ u8"shader file not found" };
+
+			std::vector<std::byte> data{ std::istreambuf_iterator<std::byte>(file), {} };
+
+			return data;
+		};
+
+		auto vs = readFile(std::filesystem::current_path() / "vert.spv");
+		auto ps = readFile(std::filesystem::current_path() / "frag.spv");
+
+		vk::ShaderModuleCreateInfo vsi{ {}, static_cast<std::uint32_t>(vs.size()), reinterpret_cast<std::uint32_t*>(vs.data()) };
+		vk::ShaderModuleCreateInfo psi{ {}, static_cast<std::uint32_t>(ps.size()), reinterpret_cast<std::uint32_t*>(ps.data()) };
+
+		auto vsm = m_device->createShaderModuleUnique(vsi);
+		auto psm = m_device->createShaderModuleUnique(psi);
+
+		vk::PipelineShaderStageCreateInfo vss{ {}, vk::ShaderStageFlagBits::eVertex, vsm.get(), "main" };
+		vk::PipelineShaderStageCreateInfo pss{ {}, vk::ShaderStageFlagBits::eFragment, psm.get(), "main" };
+
+		std::array stages{ vss, pss };
+
+		vk::PipelineVertexInputStateCreateInfo visi{};
+		vk::PipelineInputAssemblyStateCreateInfo iasi{ {}, Graphics::VK_PrimitiveTopology(Graphics::PRIMITIVE_TOPOLOGY::TRIANGLELIST) };
+
+		vk::Viewport vp{ .0f, static_cast<float>(m_SwapChainExtent.height), static_cast<float>(m_SwapChainExtent.width), -static_cast<float>(m_SwapChainExtent.height), .0f, 1.f };
+		vk::Rect2D ss{ { 0, 0 }, m_SwapChainExtent };
+		vk::PipelineViewportStateCreateInfo vpsi{ {}, 1, &vp, 1, &ss };
+
+		vk::PipelineRasterizationStateCreateInfo rsi{ {}, VK_FALSE, VK_FALSE, Graphics::VK_FillMode(Graphics::FILL_MODE::SOLID), Graphics::VK_CullMode(Graphics::CULL_MODE::BACK), vk::FrontFace::eClockwise, VK_FALSE, .0f, .0f, .0f, 1.f };
+
+		vk::PipelineMultisampleStateCreateInfo msi{};
+
+		vk::PipelineDepthStencilStateCreateInfo dssi{ {}, VK_TRUE, VK_TRUE, Graphics::VK_ComparisonFunc(Graphics::COMPARISON_FUNC::LESS) };
+
+		vk::PipelineColorBlendAttachmentState cbas{};
+		cbas.colorWriteMask = Graphics::VK_ColorWriteMask(Graphics::COLOR_WRITE_ENABLE::ALL);
+
+		vk::PipelineColorBlendStateCreateInfo cbsi{};
+		cbsi.attachmentCount = 1;
+		cbsi.pAttachments = &cbas;
+
+		std::array ds{ vk::DynamicState::eLineWidth, vk::DynamicState::eViewport };
+		vk::PipelineDynamicStateCreateInfo dsi{ {}, static_cast<std::uint32_t>(ds.size()), ds.data() };
+
+		m_pl = m_device->createPipelineLayoutUnique({});
+
+		vk::GraphicsPipelineCreateInfo pci{ {}, static_cast<std::uint32_t>(stages.size()), stages.data(), &visi, &iasi, nullptr, &vpsi, &rsi, &msi, &dssi, &cbsi, &dsi, m_pl.get(), m_rp.get() };
+
+		vk::PipelineCacheCreateInfo pcci{};
+		vk::UniquePipelineCache pc = m_device->createPipelineCacheUnique(pcci);
+
+		m_gpl = m_device->createGraphicsPipelineUnique(pc.get(), pci);
+	}
+
 	GraphicsDeviceVulkan::QueueFamilyIndices GraphicsDeviceVulkan::m_GetQueueFamilies(vk::PhysicalDevice pdev, vk::SurfaceKHR surface)
 	{
 		QueueFamilyIndices res;
@@ -706,6 +788,7 @@ namespace sisskey
 		m_CreateDepthStencilBuffer();
 		m_CreateRenderPass();
 		m_CreateFrameBuffers();
+		m_CreateGraphicsPipeline();
 
 		m_fence = m_device->createFenceUnique({});
 		m_device->resetFences(m_fence.get());
@@ -756,8 +839,12 @@ namespace sisskey
 										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
 										static_cast<std::uint32_t>(cv.size()), cv.data() };
 		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-		vk::Viewport vp{ 0, 0, 1280, 720, .0f, 1.f };
+		
+		vk::Viewport vp{ 0, m_Height, m_Width, -m_Height, .0f, 1.f };
 		m_cmd[0]->setViewport(0, vp);
+
+		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, m_gpl.get());
+		m_cmd[0]->draw(3, 1, 0, 0);
 
 		m_cmd[0]->endRenderPass();
 

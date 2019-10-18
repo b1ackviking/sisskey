@@ -6,6 +6,7 @@
 #include <limits>
 #include <cstdint>
 #include <type_traits>
+#include <vector>
 
 // TODO: types for enums
 // TODO: stop using unsigned int
@@ -33,12 +34,7 @@ namespace sisskey::Graphics
 		return static_cast<Enum> (static_cast<underlying>(lhs) & static_cast<underlying>(rhs));
 	}
 
-	struct VertexShader;
-	struct PixelShader;
-	struct HullShader;
-	struct DomainShader;
-	struct GeometryShader;
-	struct ComputeShader;
+	using Shader = std::vector<std::byte>;
 
 	struct BlendState;
 	struct RasterizerState;
@@ -359,7 +355,7 @@ namespace sisskey::Graphics
 	};
 
 	// Structs
-	struct ViewPort
+	struct Viewport
 	{
 		float TopLeftX{};
 		float TopLeftY{};
@@ -483,13 +479,13 @@ namespace sisskey::Graphics
 		std::uint64_t result_timestamp_frequency{};
 		int result_disjoint{};
 	};
-	struct PipelineStateDesc
+	struct GraphicsPipelineDesc
 	{
-		const VertexShader* vs{ nullptr };
-		const PixelShader* ps{ nullptr };
-		const HullShader* hs{ nullptr };
-		const DomainShader* ds{ nullptr };
-		const GeometryShader* gs{ nullptr };
+		const Shader* vs{ nullptr };
+		const Shader* hs{ nullptr };
+		const Shader* ds{ nullptr };
+		const Shader* gs{ nullptr };
+		const Shader* ps{ nullptr };
 		const BlendState* bs{ nullptr };
 		const RasterizerState* rs{ nullptr };
 		const DepthStencilState* dss{ nullptr };

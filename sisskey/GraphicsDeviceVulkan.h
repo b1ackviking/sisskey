@@ -48,6 +48,8 @@ namespace sisskey
 
 		void m_CreateDepthStencilBuffer();
 
+		void m_CreateGraphicsPipeline();
+
 		void m_CreateRenderPass();
 		void m_CreateFrameBuffers();
 
@@ -95,6 +97,9 @@ namespace sisskey
 		vk::UniqueRenderPass m_rp;
 
 		std::vector<vk::UniqueFramebuffer> m_fb;
+
+		vk::UniquePipelineLayout m_pl;
+		vk::UniquePipeline m_gpl;
 
 #ifndef NDEBUG
 		vk::DispatchLoaderDynamic m_loader;

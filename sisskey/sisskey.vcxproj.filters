@@ -40,6 +40,9 @@
     <Filter Include="Core\GraphicsDevice\DX12">
       <UniqueIdentifier>{c899f7a6-1783-4aed-89d4-9a1ded2290d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{5055538d-3cd5-49f4-93c9-0d303df0cd88}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -104,5 +107,13 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vs.vert.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="ps.frag.glsl">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>
