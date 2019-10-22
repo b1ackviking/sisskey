@@ -34,7 +34,8 @@ namespace sisskey::Graphics
 		return static_cast<Enum> (static_cast<underlying>(lhs) & static_cast<underlying>(rhs));
 	}
 
-	using Shader = std::vector<std::byte>;
+	// will use char to represent shader bytecode
+	using Shader = std::vector<char>;
 
 	struct BlendState;
 	struct RasterizerState;

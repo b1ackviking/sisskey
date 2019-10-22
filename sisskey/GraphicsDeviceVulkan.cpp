@@ -642,13 +642,17 @@ namespace sisskey
 
 	void GraphicsDeviceVulkan::m_CreateGraphicsPipeline()
 	{
-		const auto readFile = [](std::filesystem::path path) -> std::vector<std::byte>
+		const auto readFile = [](std::filesystem::path path)
 		{
-			std::basic_ifstream<std::byte> file{ path, std::ios::binary };
+			std::ifstream file{ path, std::ios::binary | std::ios::ate };
 			if (!file.is_open())
 				throw std::runtime_error{ u8"shader file not found" };
 
-			std::vector<std::byte> data{ std::istreambuf_iterator<std::byte>(file), {} };
+			// "usually works"...
+			std::vector<char> data(file.tellg());
+
+			file.seekg(0, std::ios::beg);
+			file.read(data.data(), data.size());
 
 			return data;
 		};
@@ -839,8 +843,8 @@ namespace sisskey
 										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
 										static_cast<std::uint32_t>(cv.size()), cv.data() };
 		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-		
-		vk::Viewport vp{ 0, m_Height, m_Width, -m_Height, .0f, 1.f };
+
+		vk::Viewport vp{ 0, static_cast<float>(m_Height), static_cast<float>(m_Width), static_cast<float>(-m_Height), .0f, 1.f };
 		m_cmd[0]->setViewport(0, vp);
 
 		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, m_gpl.get());
