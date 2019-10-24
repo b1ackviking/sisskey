@@ -3,15 +3,20 @@
 // this file is an edited verison of
 // https://github.com/turanszkij/WickedEngine/blob/master/WickedEngine/wiGraphicsDescriptors.h
 
-#include <limits>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
+#include <array>
+#include <optional>
 
 // TODO: types for enums
 // TODO: stop using unsigned int
 namespace sisskey::Graphics
 {
+	// handle for all GraphicsDevice's resources
+	using handle = std::uint64_t;
+	static_assert(sizeof(void*) == sizeof(handle));
+
 	// http://blog.bitwigglers.org/using-enum-classes-as-type-safe-bitmasks/
 	template<typename Enum>
 	struct EnableBitMaskOperators
@@ -34,14 +39,6 @@ namespace sisskey::Graphics
 		return static_cast<Enum> (static_cast<underlying>(lhs) & static_cast<underlying>(rhs));
 	}
 
-	// will use char to represent shader bytecode
-	using Shader = std::vector<char>;
-
-	struct BlendState;
-	struct RasterizerState;
-	struct DepthStencilState;
-
-	struct VertexLayout;
 	struct Texture;
 
 	enum class SHADERSTAGE
@@ -356,6 +353,10 @@ namespace sisskey::Graphics
 	};
 
 	// Structs
+
+	// will use char to represent shader bytecode
+	using Shader = std::vector<char>;
+
 	struct Viewport
 	{
 		float TopLeftX{};
@@ -377,6 +378,7 @@ namespace sisskey::Graphics
 		INPUT_CLASSIFICATION InputSlotClass{ INPUT_CLASSIFICATION::INPUT_PER_VERTEX_DATA };
 		unsigned int InstanceDataStepRate{};
 	};
+	using VertexLayout = std::vector<VertexLayoutDesc>;
 	struct SampleDesc
 	{
 		unsigned int Count{ 1 };
@@ -462,9 +464,9 @@ namespace sisskey::Graphics
 	{
 		unsigned int ByteWidth{};
 		USAGE Usage{ USAGE::DEFAULT };
-		unsigned int BindFlags{};
-		unsigned int CPUAccessFlags{};
-		unsigned int MiscFlags{};
+		BIND_FLAG BindFlags{};
+		CPU_ACCESS CPUAccessFlags{};
+		RESOURCE_MISC_FLAG MiscFlags{};
 		unsigned int StructureByteStride{}; // needed for typed and structured buffer types!
 		FORMAT Format{ FORMAT::UNKNOWN }; // only needed for typed buffer!
 	};
@@ -482,18 +484,18 @@ namespace sisskey::Graphics
 	};
 	struct GraphicsPipelineDesc
 	{
-		const Shader* vs{ nullptr };
-		const Shader* hs{ nullptr };
-		const Shader* ds{ nullptr };
-		const Shader* gs{ nullptr };
-		const Shader* ps{ nullptr };
-		const BlendState* bs{ nullptr };
-		const RasterizerState* rs{ nullptr };
-		const DepthStencilState* dss{ nullptr };
-		const VertexLayout* il{ nullptr };
+		std::optional<Shader> vs;
+		std::optional<Shader> hs;
+		std::optional<Shader> ds;
+		std::optional<Shader> gs;
+		std::optional<Shader> ps;
+		std::optional<BlendStateDesc> BlendState;
+		std::optional<RasterizerStateDesc> RasterizerState;
+		std::optional<DepthStencilStateDesc> DepthStencilState;
+		std::optional<VertexLayout> InputLayout;
 		PRIMITIVE_TOPOLOGY pt{ PRIMITIVE_TOPOLOGY::TRIANGLELIST };
 		unsigned int numRTs{};
-		FORMAT RTFormats[8]{};
+		std::array<FORMAT, 8> RTFormats{};
 		FORMAT DSFormat{ FORMAT::UNKNOWN };
 		SampleDesc sampleDesc;
 		unsigned int sampleMask{ 0xFFFFFFFF };

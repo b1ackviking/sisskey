@@ -35,7 +35,7 @@ namespace sisskey
 		{
 			// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
 			RECT rc{};
-			assert(GetClientRect(m_hWnd, &rc));
+			GetClientRect(m_hWnd, &rc);
 			return { rc.right - rc.left, rc.bottom - rc.top };
 		}
 		[[nodiscard]] std::shared_ptr<void> GetNativeHandle() const final

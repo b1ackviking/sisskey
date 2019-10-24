@@ -284,6 +284,85 @@ namespace sisskey
 			}
 		}
 
+		constexpr inline std::uint32_t VK_FormatStride(FORMAT value)
+		{
+			switch (value)
+			{
+			case FORMAT::R32G32B32A32_FLOAT:
+			case FORMAT::R32G32B32A32_UINT:
+			case FORMAT::R32G32B32A32_SINT:
+				return 16;
+
+			case FORMAT::R32G32B32_FLOAT:
+			case FORMAT::R32G32B32_UINT:
+			case FORMAT::R32G32B32_SINT:
+				return 12;
+
+			case FORMAT::R16G16B16A16_FLOAT:
+			case FORMAT::R16G16B16A16_UNORM:
+			case FORMAT::R16G16B16A16_UINT:
+			case FORMAT::R16G16B16A16_SNORM:
+			case FORMAT::R16G16B16A16_SINT:
+				return 8;
+
+			case FORMAT::R32G32_FLOAT:
+			case FORMAT::R32G32_UINT:
+			case FORMAT::R32G32_SINT:
+			case FORMAT::R32G8X24_TYPELESS:
+			case FORMAT::D32_FLOAT_S8X24_UINT:
+				return 8;
+
+			case FORMAT::R10G10B10A2_UNORM:
+			case FORMAT::R10G10B10A2_UINT:
+			case FORMAT::R11G11B10_FLOAT:
+			case FORMAT::R8G8B8A8_UNORM:
+			case FORMAT::R8G8B8A8_UNORM_SRGB:
+			case FORMAT::R8G8B8A8_UINT:
+			case FORMAT::R8G8B8A8_SNORM:
+			case FORMAT::R8G8B8A8_SINT:
+			case FORMAT::B8G8R8A8_UNORM:
+			case FORMAT::B8G8R8A8_UNORM_SRGB:
+			case FORMAT::R16G16_FLOAT:
+			case FORMAT::R16G16_UNORM:
+			case FORMAT::R16G16_UINT:
+			case FORMAT::R16G16_SNORM:
+			case FORMAT::R16G16_SINT:
+			case FORMAT::R32_TYPELESS:
+			case FORMAT::D32_FLOAT:
+			case FORMAT::R32_FLOAT:
+			case FORMAT::R32_UINT:
+			case FORMAT::R32_SINT:
+			case FORMAT::R24G8_TYPELESS:
+			case FORMAT::D24_UNORM_S8_UINT:
+				return 4;
+
+			case FORMAT::R8G8_UNORM:
+			case FORMAT::R8G8_UINT:
+			case FORMAT::R8G8_SNORM:
+			case FORMAT::R8G8_SINT:
+			case FORMAT::R16_TYPELESS:
+			case FORMAT::R16_FLOAT:
+			case FORMAT::D16_UNORM:
+			case FORMAT::R16_UNORM:
+			case FORMAT::R16_UINT:
+			case FORMAT::R16_SNORM:
+			case FORMAT::R16_SINT:
+				return 2;
+
+			case FORMAT::R8_UNORM:
+			case FORMAT::R8_UINT:
+			case FORMAT::R8_SNORM:
+			case FORMAT::R8_SINT:
+				return 1;
+
+			default:
+				assert(0); // didn't catch format!
+				break;
+			}
+
+			return 16;
+		}
+
 		constexpr inline FORMAT SK_Format(vk::Format value)
 		{
 			switch (value)
@@ -642,23 +721,8 @@ namespace sisskey
 
 	void GraphicsDeviceVulkan::m_CreateGraphicsPipeline()
 	{
-		const auto readFile = [](std::filesystem::path path)
-		{
-			std::ifstream file{ path, std::ios::binary | std::ios::ate };
-			if (!file.is_open())
-				throw std::runtime_error{ u8"shader file not found" };
-
-			// "usually works"...
-			std::vector<char> data(file.tellg());
-
-			file.seekg(0, std::ios::beg);
-			file.read(data.data(), data.size());
-
-			return data;
-		};
-
-		auto vs = readFile(std::filesystem::current_path() / "vert.spv");
-		auto ps = readFile(std::filesystem::current_path() / "frag.spv");
+		auto vs = LoadShader(std::filesystem::current_path() / "vert.spv");
+		auto ps = LoadShader(std::filesystem::current_path() / "frag.spv");
 
 		vk::ShaderModuleCreateInfo vsi{ {}, static_cast<std::uint32_t>(vs.size()), reinterpret_cast<std::uint32_t*>(vs.data()) };
 		vk::ShaderModuleCreateInfo psi{ {}, static_cast<std::uint32_t>(ps.size()), reinterpret_cast<std::uint32_t*>(ps.data()) };
@@ -778,7 +842,7 @@ namespace sisskey
 
 		return BestMode;
 	}
-
+	
 	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
@@ -805,7 +869,7 @@ namespace sisskey
 		vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
 		m_cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
 	}
-
+	
 	GraphicsDeviceVulkan::~GraphicsDeviceVulkan()
 	{
 		m_GraphicsQueue.waitIdle();
@@ -865,5 +929,305 @@ namespace sisskey
 
 		vk::PresentInfoKHR presentInfo{ 1, &m_sem.get(), 1, &m_swapchain.get(), &imageIndex.value};
 		m_PresentQueue.presentKHR(presentInfo);
+	}
+
+	void GraphicsDeviceVulkan::Render(Graphics::handle pipeline)
+	{
+		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
+		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
+		m_device->resetFences(m_fence.get());
+		m_GraphicsQueue.waitIdle();
+
+		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+		m_cmd[0]->begin(begin);
+
+		std::array<vk::ClearValue, 2> cv{};
+		// const float* c = DirectX::Colors::LightSteelBlue;
+		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
+		// cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
+		static float color = 0.0f;
+		color += 0.03f;
+		cv[0].color.setFloat32({ sinf(color) * 0.5f + 0.5f,
+								sinf(color + 3.141593f / 6.0f) * 0.5f + 0.5f,
+								sinf(color + 2.0f * 3.141593f / 6.0f) * 0.5f + 0.5f,
+								1.0f });
+		cv[1].depthStencil.depth = 1.f;
+		cv[1].depthStencil.stencil = 0;
+
+		vk::RenderPassBeginInfo rpBegin{ m_rp.get(), m_fb[imageIndex.value].get(),
+										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
+										static_cast<std::uint32_t>(cv.size()), cv.data() };
+		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
+
+		vk::Viewport vp{ 0, static_cast<float>(m_Height), static_cast<float>(m_Width), static_cast<float>(-m_Height), .0f, 1.f };
+		m_cmd[0]->setViewport(0, vp);
+
+		vk::Rect2D sc{ {}, m_SwapChainExtent };
+		m_cmd[0]->setScissor(0, sc);
+
+		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
+		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, p);
+		m_cmd[0]->draw(3, 1, 0, 0);
+
+		m_cmd[0]->endRenderPass();
+
+		m_cmd[0]->end();
+
+		std::vector<vk::CommandBuffer> v;
+		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
+		vk::SubmitInfo submit{};
+		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
+		submit.pCommandBuffers = v.data();
+		submit.signalSemaphoreCount = 1;
+		submit.pSignalSemaphores = &m_sem.get();
+		m_GraphicsQueue.submit(submit, vk::Fence{});
+
+		vk::PresentInfoKHR presentInfo{ 1, &m_sem.get(), 1, &m_swapchain.get(), &imageIndex.value };
+		m_PresentQueue.presentKHR(presentInfo);
+	}
+
+	Graphics::handle GraphicsDeviceVulkan::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
+	{
+		// This will be a dummy render pass used for pipeline validation
+		// https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html#renderpass-compatibility
+		auto renderPass = [&] {
+			std::uint32_t AttachmentCount = desc.numRTs + (desc.DSFormat == Graphics::FORMAT::UNKNOWN ? 0 : 1);
+
+			std::vector<vk::AttachmentDescription> attachmentDescriptions(AttachmentCount);
+			std::vector<vk::AttachmentReference> colorAttachmentRefs(AttachmentCount);
+
+			for (std::uint32_t i{}; i < desc.numRTs; ++i)
+			{
+				vk::AttachmentDescription attachment{ {}, Graphics::VK_Format(desc.RTFormats[i]), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral  };
+				attachmentDescriptions[i] = attachment;
+
+				vk::AttachmentReference ref{ i, vk::ImageLayout::eColorAttachmentOptimal };
+				colorAttachmentRefs[i] = ref;
+			}
+
+			vk::SubpassDescription subpass{ {}, vk::PipelineBindPoint::eGraphics, 0, nullptr, desc.numRTs, colorAttachmentRefs.data() };
+
+			vk::AttachmentReference depthAttachmentRef{ desc.numRTs, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+			if (desc.DSFormat != Graphics::FORMAT::UNKNOWN)
+			{
+				vk::AttachmentDescription depthAttachment{ {}, Graphics::VK_Format(desc.DSFormat), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral };
+				attachmentDescriptions[desc.numRTs] = depthAttachment;
+
+				subpass.pDepthStencilAttachment = &depthAttachmentRef;
+			}
+
+			vk::RenderPassCreateInfo renderPassInfo{ {}, static_cast<std::uint32_t>(attachmentDescriptions.size()), attachmentDescriptions.data(), 1, &subpass };
+
+			return m_device->createRenderPassUnique(renderPassInfo);
+		}();
+
+		// Shaders
+		std::vector<vk::PipelineShaderStageCreateInfo> ShaderStages;
+		vk::UniqueShaderModule vsm, hsm, dsm, gsm, psm;
+
+		if (desc.vs)
+		{
+			vk::ShaderModuleCreateInfo vsi{ {}, static_cast<std::uint32_t>(desc.vs->size()), reinterpret_cast<std::uint32_t*>(desc.vs->data()) };
+			vsm = m_device->createShaderModuleUnique(vsi);
+			vk::PipelineShaderStageCreateInfo vss{ {}, vk::ShaderStageFlagBits::eVertex, vsm.get(), "main" };
+
+			ShaderStages.push_back(vss);
+		}
+		if (desc.hs)
+		{
+			vk::ShaderModuleCreateInfo hsi{ {}, static_cast<std::uint32_t>(desc.hs->size()), reinterpret_cast<std::uint32_t*>(desc.hs->data()) };
+			hsm = m_device->createShaderModuleUnique(hsi);
+			vk::PipelineShaderStageCreateInfo hss{ {}, vk::ShaderStageFlagBits::eTessellationControl, hsm.get(), "main" };
+
+			ShaderStages.push_back(hss);
+		}
+		if (desc.ds)
+		{
+			vk::ShaderModuleCreateInfo dsi{ {}, static_cast<std::uint32_t>(desc.ds->size()), reinterpret_cast<std::uint32_t*>(desc.ds->data()) };
+			dsm = m_device->createShaderModuleUnique(dsi);
+			vk::PipelineShaderStageCreateInfo dss{ {}, vk::ShaderStageFlagBits::eTessellationEvaluation, dsm.get(), "main" };
+
+			ShaderStages.push_back(dss);
+		}
+		if (desc.gs)
+		{
+			vk::ShaderModuleCreateInfo gsi{ {}, static_cast<std::uint32_t>(desc.gs->size()), reinterpret_cast<std::uint32_t*>(desc.gs->data()) };
+			gsm = m_device->createShaderModuleUnique(gsi);
+			vk::PipelineShaderStageCreateInfo gss{ {}, vk::ShaderStageFlagBits::eGeometry, gsm.get(), "main" };
+
+			ShaderStages.push_back(gss);
+		}
+		if (desc.ps)
+		{
+			vk::ShaderModuleCreateInfo psi{ {}, static_cast<std::uint32_t>(desc.ps->size()), reinterpret_cast<std::uint32_t*>(desc.ps->data()) };
+			psm = m_device->createShaderModuleUnique(psi);
+			vk::PipelineShaderStageCreateInfo pss{ {}, vk::ShaderStageFlagBits::eFragment, psm.get(), "main" };
+
+			ShaderStages.push_back(pss);
+		}
+
+		// Input layout
+		std::vector<vk::VertexInputBindingDescription> bindings;
+		std::vector<vk::VertexInputAttributeDescription> attributes;
+		if (desc.InputLayout)
+		{
+			std::uint32_t lastBinding = 0xFFFFFFFF;
+			for (auto& item : *desc.InputLayout)
+			{
+				vk::VertexInputBindingDescription bind{ item.InputSlot, item.AlignedByteOffset, Graphics::VK_InputClassification(item.InputSlotClass) };
+				if (bind.stride == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT)
+				{
+					// need to manually resolve this from the format spec.
+					bind.stride = Graphics::VK_FormatStride(item.Format);
+				}
+
+				// ??
+				if (lastBinding != bind.binding)
+				{
+					bindings.push_back(bind);
+					lastBinding = bind.binding;
+				}
+				else
+				{
+					bindings.back().stride += bind.stride;
+				}
+			}
+
+			std::uint32_t offset = 0;
+			std::uint32_t i = 0;
+			lastBinding = 0xFFFFFFFF;
+			for (auto& item : *desc.InputLayout)
+			{
+				vk::VertexInputAttributeDescription attr{ i++, item.InputSlot, Graphics::VK_Format(item.Format), item.AlignedByteOffset };
+				
+				// ??
+				if (attr.binding != lastBinding)
+				{
+					lastBinding = attr.binding;
+					offset = 0;
+				}
+				if (attr.offset == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT)
+				{
+					// need to manually resolve this from the format spec.
+					attr.offset = offset;
+					offset += Graphics::VK_FormatStride(item.Format);
+				}
+
+				attributes.push_back(attr);
+			}
+
+			/*vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+			vertexInputInfo.pVertexBindingDescriptions = bindings.data();
+			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+			vertexInputInfo.pVertexAttributeDescriptions = attributes.data();*/
+		}
+		vk::PipelineVertexInputStateCreateInfo visi{ {}, static_cast<std::uint32_t>(bindings.size()), bindings.data(), static_cast<std::uint32_t>(attributes.size()), attributes.data() };
+
+		// Primitive topology
+		vk::PipelineInputAssemblyStateCreateInfo iasi{ {}, Graphics::VK_PrimitiveTopology(desc.pt) };
+
+		// Rasterizer state
+		vk::PipelineRasterizationStateCreateInfo rsi{ {}, VK_TRUE, VK_FALSE, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eClockwise, VK_FALSE, .0f, .0f, .0f, 1.f };
+
+		// depth clip will be enabled via Vulkan 1.1 extension VK_EXT_depth_clip_enable:
+		vk::PipelineRasterizationDepthClipStateCreateInfoEXT depthclip{ {}, VK_TRUE };
+		rsi.pNext = &depthclip;
+
+		if (desc.RasterizerState)
+		{
+			rsi.polygonMode = Graphics::VK_FillMode(desc.RasterizerState->FillMode);
+			rsi.cullMode = Graphics::VK_CullMode(desc.RasterizerState->CullMode);
+			rsi.frontFace = desc.RasterizerState->FrontCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise;
+			rsi.depthBiasEnable = desc.RasterizerState->DepthBias != 0;
+			rsi.depthBiasConstantFactor = static_cast<float>(desc.RasterizerState->DepthBias);
+			rsi.depthClampEnable = desc.RasterizerState->DepthBiasClamp != .0f; // ??
+			rsi.depthBiasClamp = desc.RasterizerState->DepthBiasClamp;
+			rsi.depthBiasSlopeFactor = desc.RasterizerState->SlopeScaledDepthBias;
+
+			// depth clip is extension in Vulkan 1.1:
+			depthclip.depthClipEnable = desc.RasterizerState->DepthClipEnable ? VK_TRUE : VK_FALSE;
+		}
+
+		// MSAA
+		vk::PipelineMultisampleStateCreateInfo msi{};
+
+		// Depth-Stencil
+		vk::PipelineDepthStencilStateCreateInfo dssi{ {}, VK_TRUE, VK_TRUE, Graphics::VK_ComparisonFunc(Graphics::COMPARISON_FUNC::LESS) };
+		if (desc.DepthStencilState)
+		{
+			dssi.depthTestEnable = desc.DepthStencilState->DepthEnable ? VK_TRUE : VK_FALSE;
+			dssi.depthWriteEnable = desc.DepthStencilState->DepthWriteMask == Graphics::DEPTH_WRITE_MASK::ZERO ? VK_FALSE : VK_TRUE;
+			dssi.depthCompareOp = Graphics::VK_ComparisonFunc(desc.DepthStencilState->DepthFunc);
+
+			dssi.stencilTestEnable = desc.DepthStencilState->StencilEnable ? VK_TRUE : VK_FALSE;
+			dssi.front.compareMask = desc.DepthStencilState->StencilReadMask;
+			dssi.front.writeMask = desc.DepthStencilState->StencilWriteMask;
+			dssi.front.reference = 0; // runtime supplied
+			dssi.front.compareOp = Graphics::VK_ComparisonFunc(desc.DepthStencilState->FrontFace.StencilFunc);
+			dssi.front.passOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilPassOp);
+			dssi.front.failOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilFailOp);
+			dssi.front.depthFailOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilDepthFailOp);
+
+			dssi.back.compareMask = desc.DepthStencilState->StencilReadMask;
+			dssi.back.writeMask = desc.DepthStencilState->StencilWriteMask;
+			dssi.back.reference = 0; // runtime supplied
+			dssi.back.compareOp = Graphics::VK_ComparisonFunc(desc.DepthStencilState->FrontFace.StencilFunc);
+			dssi.back.passOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilPassOp);
+			dssi.back.failOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilFailOp);
+			dssi.back.depthFailOp = Graphics::VK_StencilOp(desc.DepthStencilState->FrontFace.StencilDepthFailOp);
+
+			dssi.depthBoundsTestEnable = VK_FALSE;
+		}
+
+		// Blending
+		std::vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachments(desc.numRTs);
+		for (size_t i{}; i < colorBlendAttachments.size(); ++i)
+		{
+			Graphics::RenderTargetBlendStateDesc rtbs = desc.BlendState ? desc.BlendState->RenderTarget[i] : Graphics::RenderTargetBlendStateDesc();
+
+			colorBlendAttachments[i].blendEnable = rtbs.BlendEnable ? VK_TRUE : VK_FALSE;
+
+			colorBlendAttachments[i].colorWriteMask = Graphics::VK_ColorWriteMask(rtbs.RenderTargetWriteMask);
+			colorBlendAttachments[i].srcColorBlendFactor = Graphics::VK_Blend(rtbs.SrcBlend);
+			colorBlendAttachments[i].dstColorBlendFactor = Graphics::VK_Blend(rtbs.DestBlend);
+			colorBlendAttachments[i].colorBlendOp = Graphics::VK_BlendOp(rtbs.BlendOp);
+			colorBlendAttachments[i].srcAlphaBlendFactor = Graphics::VK_Blend(rtbs.SrcBlendAlpha);
+			colorBlendAttachments[i].dstAlphaBlendFactor = Graphics::VK_Blend(rtbs.DestBlendAlpha);
+			colorBlendAttachments[i].alphaBlendOp = Graphics::VK_BlendOp(rtbs.BlendOpAlpha);
+		}
+		vk::PipelineColorBlendStateCreateInfo colorBlending{ {}, VK_FALSE, vk::LogicOp::eCopy, static_cast<std::uint32_t>(colorBlendAttachments.size()), colorBlendAttachments.data(), { 1.f, 1.f, 1.f, 1.f } };
+
+		// Tessellation ??
+		vk::PipelineTessellationStateCreateInfo tsi{ {}, 3 };
+
+		// Viewport, Scissor
+		vk::Viewport vp{ .0f, static_cast<float>(m_SwapChainExtent.height), static_cast<float>(m_SwapChainExtent.width), -static_cast<float>(m_SwapChainExtent.height), .0f, 1.f };
+		vk::Rect2D ss{ { 0, 0 }, m_SwapChainExtent };
+		vk::PipelineViewportStateCreateInfo vpsi{ {}, 1, &vp, 1, &ss };
+
+		// Dynamic states
+		std::array ds{	vk::DynamicState::eViewport,
+						vk::DynamicState::eScissor,
+						vk::DynamicState::eStencilReference, // ??
+						vk::DynamicState::eBlendConstants
+		};
+		vk::PipelineDynamicStateCreateInfo dsi{ {}, static_cast<std::uint32_t>(ds.size()), ds.data() };
+
+		// TODO: pipeline layout
+		vk::GraphicsPipelineCreateInfo pci{ {}, static_cast<std::uint32_t>(ShaderStages.size()), ShaderStages.data(), &visi, &iasi, &tsi, &vpsi, &rsi, &msi, &dssi, &colorBlending, &dsi, m_pl.get(), renderPass.get() };
+
+		vk::PipelineCacheCreateInfo pcci{};
+		vk::UniquePipelineCache pc = m_device->createPipelineCacheUnique(pcci);
+
+		auto pipeline = m_device->createGraphicsPipeline(pc.get(), pci);
+		auto ret = static_cast<VkPipeline>(pipeline);
+		return reinterpret_cast<Graphics::handle>(ret);
+	}
+
+	void GraphicsDeviceVulkan::DestroyGraphicsPipeline(Graphics::handle pipeline)
+	{
+		m_device->waitIdle();
+		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
+		m_device->destroyPipeline(p);
 	}
 }

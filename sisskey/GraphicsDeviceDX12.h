@@ -94,6 +94,12 @@ namespace sisskey
 			m_FlushCommandQueue();
 		}
 
+		// These are test methods
 		void Render() final;
+		void Render(Graphics::handle pipeline) final {}
+
+		// TODO:
+		Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final { return Graphics::handle{}; }
+		void DestroyGraphicsPipeline(Graphics::handle pipeline) final {}
 	};
 }

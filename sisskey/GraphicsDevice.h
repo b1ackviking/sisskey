@@ -3,6 +3,7 @@
 #include "GraphicsDescriptors.h"
 
 #include <memory>
+#include <filesystem>
 
 namespace sisskey
 {
@@ -48,9 +49,21 @@ namespace sisskey
 
 		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(std::shared_ptr<Window> window, PresentMode mode = PresentMode::Windowed, API api = API::Vulkan);
 
+		virtual Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
+		virtual void DestroyGraphicsPipeline(Graphics::handle pipeline) = 0;
+
+		// TODO:
+		// virtual void BindStencilRef(std::uint32_t value, cmdlist index) = 0;
+
+		// These are test methods
 		virtual void Render() = 0;
+		virtual void Render(Graphics::handle pipeline) = 0;
 
 		[[nodiscard]] static constexpr Graphics::FORMAT GetBackBufferFormat() noexcept { return m_BackBufferFormat; }
 		[[nodiscard]] static constexpr int GetBackBufferCount() noexcept { return m_BackBufferCount; }
+		[[nodiscard]] static constexpr Graphics::FORMAT GetDepthStencilFormat() noexcept { return m_DepthStencilFormat; }
+
+		// TODO: API
+		[[nodiscard]] static Graphics::Shader LoadShader(std::filesystem::path path);
 	};
 }

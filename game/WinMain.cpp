@@ -74,8 +74,25 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 	auto w = sisskey::Window::Create();
 	auto gd = sisskey::GraphicsDevice::Create(w);
+	
+	sisskey::Graphics::GraphicsPipelineDesc gpd;
+	gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "vert.spv");
+	gpd.ps = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "frag.spv");
+	gpd.numRTs = 1;
+	gpd.RTFormats[0] = gd->GetBackBufferFormat();
 
-	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render();
+	sisskey::Graphics::DepthStencilStateDesc dss{};
+	dss.DepthEnable = true;
+	dss.DepthFunc = sisskey::Graphics::COMPARISON_FUNC::LESS;
+	dss.DepthWriteMask = sisskey::Graphics::DEPTH_WRITE_MASK::ALL;
+	gpd.DSFormat = gd->GetDepthStencilFormat();
+	gpd.DepthStencilState = std::move(dss);
+
+	auto p = gd->CreateGraphicsPipeline(gpd);
+
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render(p);
+
+	gd->DestroyGraphicsPipeline(p);
 
 	return 0;
 }

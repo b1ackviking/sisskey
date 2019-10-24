@@ -71,6 +71,7 @@ namespace sisskey
 																VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
 																VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME, // needed for VK_KHR_dedicated_allocation
 																// VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME // supported only on Windows :(
+																VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME,
 																};
 
 		struct SwapChainSupportDetails
@@ -118,6 +119,11 @@ namespace sisskey
 		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceVulkan();
 
+		// These are test methods
 		void Render() final;
+		void Render(Graphics::handle pipeline) final;
+
+		Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final;
+		void DestroyGraphicsPipeline(Graphics::handle pipeline) final;
 	};
 }

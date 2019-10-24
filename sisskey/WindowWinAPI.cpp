@@ -95,7 +95,7 @@ namespace sisskey
 		else
 		{
 			RECT WindowRect{ 0, 0, width, height };
-			assert(AdjustWindowRect(&WindowRect, WS_OVERLAPPEDWINDOW, FALSE));
+			AdjustWindowRect(&WindowRect, WS_OVERLAPPEDWINDOW, FALSE);
 			int WindowWidth = WindowRect.right - WindowRect.left;
 			int WindowHeight = WindowRect.bottom - WindowRect.top;
 
