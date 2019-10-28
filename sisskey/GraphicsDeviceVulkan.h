@@ -48,8 +48,6 @@ namespace sisskey
 
 		void m_CreateDepthStencilBuffer();
 
-		void m_CreateGraphicsPipeline();
-
 		void m_CreateRenderPass();
 		void m_CreateFrameBuffers();
 
@@ -100,7 +98,6 @@ namespace sisskey
 		std::vector<vk::UniqueFramebuffer> m_fb;
 
 		vk::UniquePipelineLayout m_pl;
-		vk::UniquePipeline m_gpl;
 
 #ifndef NDEBUG
 		vk::DispatchLoaderDynamic m_loader;
@@ -121,9 +118,12 @@ namespace sisskey
 
 		// These are test methods
 		void Render() final;
-		void Render(Graphics::handle pipeline) final;
+		void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) final;
 
 		Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final;
 		void DestroyGraphicsPipeline(Graphics::handle pipeline) final;
+
+		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final;
+		void DestroyBuffer(Graphics::buffer buffer) final;
 	};
 }

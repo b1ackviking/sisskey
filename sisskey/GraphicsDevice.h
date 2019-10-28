@@ -52,12 +52,15 @@ namespace sisskey
 		virtual Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
 		virtual void DestroyGraphicsPipeline(Graphics::handle pipeline) = 0;
 
+		virtual Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) = 0;
+		virtual void DestroyBuffer(Graphics::buffer buffer) = 0;
+
 		// TODO:
 		// virtual void BindStencilRef(std::uint32_t value, cmdlist index) = 0;
 
 		// These are test methods
 		virtual void Render() = 0;
-		virtual void Render(Graphics::handle pipeline) = 0;
+		virtual void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) = 0;
 
 		[[nodiscard]] static constexpr Graphics::FORMAT GetBackBufferFormat() noexcept { return m_BackBufferFormat; }
 		[[nodiscard]] static constexpr int GetBackBufferCount() noexcept { return m_BackBufferCount; }

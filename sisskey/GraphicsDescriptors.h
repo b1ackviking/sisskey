@@ -17,6 +17,12 @@ namespace sisskey::Graphics
 	using handle = std::uintptr_t;
 	static_assert(sizeof(void*) == sizeof(handle));
 
+	struct buffer
+	{
+		handle resource;
+		handle allocation;
+	};
+
 	// http://blog.bitwigglers.org/using-enum-classes-as-type-safe-bitmasks/
 	template<typename Enum>
 	struct EnableBitMaskOperators
@@ -297,7 +303,7 @@ namespace sisskey::Graphics
 		CLEAR_DEPTH = 0x1L,
 		CLEAR_STENCIL = 0x2L,
 	};
-	enum class BIND_FLAG
+	enum BIND_FLAG
 	{
 		VERTEX_BUFFER = 0x1L,
 		INDEX_BUFFER = 0x2L,
@@ -307,11 +313,6 @@ namespace sisskey::Graphics
 		RENDER_TARGET = 0x20L,
 		DEPTH_STENCIL = 0x40L,
 		UNORDERED_ACCESS = 0x80L,
-	};
-	enum class CPU_ACCESS
-	{
-		CPU_ACCESS_WRITE = 0x10000L,
-		CPU_ACCESS_READ = 0x20000L,
 	};
 	enum class RESOURCE_MISC_FLAG
 	{
@@ -370,7 +371,7 @@ namespace sisskey::Graphics
 	{
 		static constexpr unsigned int APPEND_ALIGNED_ELEMENT{ 0xffffffff }; // automatically figure out AlignedByteOffset depending on Format
 
-		char* SemanticName{ nullptr };
+		const char* SemanticName{ nullptr };
 		unsigned int SemanticIndex{};
 		FORMAT Format{ FORMAT::UNKNOWN };
 		unsigned int InputSlot{};
@@ -463,9 +464,8 @@ namespace sisskey::Graphics
 	struct GPUBufferDesc
 	{
 		unsigned int ByteWidth{};
-		USAGE Usage{ USAGE::DEFAULT };
+		USAGE Usage{ USAGE::DEFAULT }; // ??
 		BIND_FLAG BindFlags{};
-		CPU_ACCESS CPUAccessFlags{};
 		RESOURCE_MISC_FLAG MiscFlags{};
 		unsigned int StructureByteStride{}; // needed for typed and structured buffer types!
 		FORMAT Format{ FORMAT::UNKNOWN }; // only needed for typed buffer!

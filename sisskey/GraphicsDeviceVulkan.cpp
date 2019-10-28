@@ -719,55 +719,6 @@ namespace sisskey
 		}
 	}
 
-	void GraphicsDeviceVulkan::m_CreateGraphicsPipeline()
-	{
-		auto vs = LoadShader(std::filesystem::current_path() / "vert.spv");
-		auto ps = LoadShader(std::filesystem::current_path() / "frag.spv");
-
-		vk::ShaderModuleCreateInfo vsi{ {}, static_cast<std::uint32_t>(vs.size()), reinterpret_cast<std::uint32_t*>(vs.data()) };
-		vk::ShaderModuleCreateInfo psi{ {}, static_cast<std::uint32_t>(ps.size()), reinterpret_cast<std::uint32_t*>(ps.data()) };
-
-		auto vsm = m_device->createShaderModuleUnique(vsi);
-		auto psm = m_device->createShaderModuleUnique(psi);
-
-		vk::PipelineShaderStageCreateInfo vss{ {}, vk::ShaderStageFlagBits::eVertex, vsm.get(), "main" };
-		vk::PipelineShaderStageCreateInfo pss{ {}, vk::ShaderStageFlagBits::eFragment, psm.get(), "main" };
-
-		std::array stages{ vss, pss };
-
-		vk::PipelineVertexInputStateCreateInfo visi{};
-		vk::PipelineInputAssemblyStateCreateInfo iasi{ {}, Graphics::VK_PrimitiveTopology(Graphics::PRIMITIVE_TOPOLOGY::TRIANGLELIST) };
-
-		vk::Viewport vp{ .0f, static_cast<float>(m_SwapChainExtent.height), static_cast<float>(m_SwapChainExtent.width), -static_cast<float>(m_SwapChainExtent.height), .0f, 1.f };
-		vk::Rect2D ss{ { 0, 0 }, m_SwapChainExtent };
-		vk::PipelineViewportStateCreateInfo vpsi{ {}, 1, &vp, 1, &ss };
-
-		vk::PipelineRasterizationStateCreateInfo rsi{ {}, VK_FALSE, VK_FALSE, Graphics::VK_FillMode(Graphics::FILL_MODE::SOLID), Graphics::VK_CullMode(Graphics::CULL_MODE::BACK), vk::FrontFace::eClockwise, VK_FALSE, .0f, .0f, .0f, 1.f };
-
-		vk::PipelineMultisampleStateCreateInfo msi{};
-
-		vk::PipelineDepthStencilStateCreateInfo dssi{ {}, VK_TRUE, VK_TRUE, Graphics::VK_ComparisonFunc(Graphics::COMPARISON_FUNC::LESS) };
-
-		vk::PipelineColorBlendAttachmentState cbas{};
-		cbas.colorWriteMask = Graphics::VK_ColorWriteMask(Graphics::COLOR_WRITE_ENABLE::ALL);
-
-		vk::PipelineColorBlendStateCreateInfo cbsi{};
-		cbsi.attachmentCount = 1;
-		cbsi.pAttachments = &cbas;
-
-		std::array ds{ vk::DynamicState::eLineWidth, vk::DynamicState::eViewport };
-		vk::PipelineDynamicStateCreateInfo dsi{ {}, static_cast<std::uint32_t>(ds.size()), ds.data() };
-
-		m_pl = m_device->createPipelineLayoutUnique({});
-
-		vk::GraphicsPipelineCreateInfo pci{ {}, static_cast<std::uint32_t>(stages.size()), stages.data(), &visi, &iasi, nullptr, &vpsi, &rsi, &msi, &dssi, &cbsi, &dsi, m_pl.get(), m_rp.get() };
-
-		vk::PipelineCacheCreateInfo pcci{};
-		vk::UniquePipelineCache pc = m_device->createPipelineCacheUnique(pcci);
-
-		m_gpl = m_device->createGraphicsPipelineUnique(pc.get(), pci);
-	}
-
 	GraphicsDeviceVulkan::QueueFamilyIndices GraphicsDeviceVulkan::m_GetQueueFamilies(vk::PhysicalDevice pdev, vk::SurfaceKHR surface)
 	{
 		QueueFamilyIndices res;
@@ -856,7 +807,8 @@ namespace sisskey
 		m_CreateDepthStencilBuffer();
 		m_CreateRenderPass();
 		m_CreateFrameBuffers();
-		m_CreateGraphicsPipeline();
+
+		m_pl = m_device->createPipelineLayoutUnique({});
 
 		m_fence = m_device->createFenceUnique({});
 		m_device->resetFences(m_fence.get());
@@ -911,9 +863,6 @@ namespace sisskey
 		vk::Viewport vp{ 0, static_cast<float>(m_Height), static_cast<float>(m_Width), static_cast<float>(-m_Height), .0f, 1.f };
 		m_cmd[0]->setViewport(0, vp);
 
-		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, m_gpl.get());
-		m_cmd[0]->draw(3, 1, 0, 0);
-
 		m_cmd[0]->endRenderPass();
 
 		m_cmd[0]->end();
@@ -931,7 +880,7 @@ namespace sisskey
 		m_PresentQueue.presentKHR(presentInfo);
 	}
 
-	void GraphicsDeviceVulkan::Render(Graphics::handle pipeline)
+	void GraphicsDeviceVulkan::Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer)
 	{
 		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
 		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
@@ -967,6 +916,11 @@ namespace sisskey
 
 		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
 		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, p);
+
+		vk::Buffer vb{ reinterpret_cast<VkBuffer>(vertexBuffer.resource) };
+		vk::DeviceSize offset{};
+		m_cmd[0]->bindVertexBuffers(0, vb, offset);
+
 		m_cmd[0]->draw(3, 1, 0, 0);
 
 		m_cmd[0]->endRenderPass();
@@ -1071,17 +1025,11 @@ namespace sisskey
 		std::vector<vk::VertexInputAttributeDescription> attributes;
 		if (desc.InputLayout)
 		{
-			std::uint32_t lastBinding = 0xFFFFFFFF;
+			std::uint32_t lastBinding{ 0xFFFFFFFF };
 			for (auto& item : *desc.InputLayout)
 			{
-				vk::VertexInputBindingDescription bind{ item.InputSlot, item.AlignedByteOffset, Graphics::VK_InputClassification(item.InputSlotClass) };
-				if (bind.stride == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT)
-				{
-					// need to manually resolve this from the format spec.
-					bind.stride = Graphics::VK_FormatStride(item.Format);
-				}
+				vk::VertexInputBindingDescription bind{ item.InputSlot, Graphics::VK_FormatStride(item.Format), Graphics::VK_InputClassification(item.InputSlotClass) };
 
-				// ??
 				if (lastBinding != bind.binding)
 				{
 					bindings.push_back(bind);
@@ -1093,33 +1041,32 @@ namespace sisskey
 				}
 			}
 
-			std::uint32_t offset = 0;
-			std::uint32_t i = 0;
+			std::uint32_t offset{};
+			std::uint32_t i{};
 			lastBinding = 0xFFFFFFFF;
 			for (auto& item : *desc.InputLayout)
 			{
 				vk::VertexInputAttributeDescription attr{ i++, item.InputSlot, Graphics::VK_Format(item.Format), item.AlignedByteOffset };
 				
-				// ??
+				// clear offsets
 				if (attr.binding != lastBinding)
 				{
 					lastBinding = attr.binding;
+					attr.offset = 0;
 					offset = 0;
 				}
-				if (attr.offset == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT)
-				{
-					// need to manually resolve this from the format spec.
-					attr.offset = offset;
-					offset += Graphics::VK_FormatStride(item.Format);
-				}
 
+				// store accumulated offset
+				if (attr.offset == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT)
+					attr.offset = offset;
+				// assume given correct offset of current element
+				else
+					offset = attr.offset;
+
+				// advance offest by the stride of the element
+				offset += Graphics::VK_FormatStride(item.Format);
 				attributes.push_back(attr);
 			}
-
-			/*vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
-			vertexInputInfo.pVertexBindingDescriptions = bindings.data();
-			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
-			vertexInputInfo.pVertexAttributeDescriptions = attributes.data();*/
 		}
 		vk::PipelineVertexInputStateCreateInfo visi{ {}, static_cast<std::uint32_t>(bindings.size()), bindings.data(), static_cast<std::uint32_t>(attributes.size()), attributes.data() };
 
@@ -1229,5 +1176,46 @@ namespace sisskey
 		m_device->waitIdle();
 		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
 		m_device->destroyPipeline(p);
+	}
+	
+	Graphics::buffer GraphicsDeviceVulkan::CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData)
+	{
+		vk::BufferUsageFlags usage{ vk::BufferUsageFlagBits::eTransferDst };
+		if (desc.BindFlags & Graphics::BIND_FLAG::VERTEX_BUFFER)
+			usage |= vk::BufferUsageFlagBits::eVertexBuffer;
+		if (desc.BindFlags & Graphics::BIND_FLAG::INDEX_BUFFER)
+			usage |= vk::BufferUsageFlagBits::eIndexBuffer;
+		if (desc.BindFlags & Graphics::BIND_FLAG::CONSTANT_BUFFER)
+			usage |= vk::BufferUsageFlagBits::eUniformBuffer;
+		if (desc.BindFlags & Graphics::BIND_FLAG::SHADER_RESOURCE || desc.BindFlags & Graphics::BIND_FLAG::UNORDERED_ACCESS)
+		{
+			if (desc.Format == Graphics::FORMAT::UNKNOWN)
+				usage |= vk::BufferUsageFlagBits::eStorageBuffer;
+			else
+				usage |= vk::BufferUsageFlagBits::eStorageTexelBuffer;
+		}
+		
+		vk::BufferCreateInfo bufferInfo{ {}, desc.ByteWidth, usage };
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+		VkBuffer buffer;
+		VmaAllocation alloc;
+		vmaCreateBuffer(m_vma, &static_cast<VkBufferCreateInfo>(bufferInfo), &allocInfo, &buffer, &alloc, nullptr);
+		
+		if (initData)
+		{
+			void* data;
+			vmaMapMemory(m_vma, alloc, &data);
+			std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+			vmaUnmapMemory(m_vma, alloc);
+		}
+
+		return { reinterpret_cast<Graphics::handle>(buffer), reinterpret_cast<Graphics::handle>(alloc) };
+	}
+	
+	void GraphicsDeviceVulkan::DestroyBuffer(Graphics::buffer buffer)
+	{
+		m_device->waitIdle();
+		vmaDestroyBuffer(m_vma, reinterpret_cast<VkBuffer>(buffer.resource), reinterpret_cast<VmaAllocation>(buffer.allocation));
 	}
 }

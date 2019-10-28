@@ -96,10 +96,12 @@ namespace sisskey
 
 		// These are test methods
 		void Render() final;
-		void Render(Graphics::handle pipeline) final {}
+		void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) final {}
 
 		// TODO:
 		Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final { return Graphics::handle{}; }
 		void DestroyGraphicsPipeline(Graphics::handle pipeline) final {}
+		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final { return Graphics::buffer{}; }
+		void DestroyBuffer(Graphics::buffer buffer) final {}
 	};
 }

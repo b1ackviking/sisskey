@@ -75,11 +75,44 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	auto w = sisskey::Window::Create();
 	auto gd = sisskey::GraphicsDevice::Create(w);
 	
+	
+	struct Vertex
+	{
+		float x, y;
+		float r, g, b;
+	};
+	static_assert(sizeof(Vertex) == 5 * sizeof(float));
+
+	const std::vector<Vertex> vertices{
+		{  .0f,  .5f, 1.f, 0.f, 0.f },
+		{  .5f, -.5f, .0f, 1.f, 0.f },
+		{ -.5f, -.5f, .0f, .0f, 1.f },
+	};
+
+	sisskey::Graphics::GPUBufferDesc bd;
+	bd.BindFlags = sisskey::Graphics::BIND_FLAG::VERTEX_BUFFER;
+	bd.ByteWidth = static_cast<unsigned int>(vertices.size() * sizeof(Vertex));
+	sisskey::Graphics::SubresourceData data;
+	data.pSysMem = vertices.data();
+	sisskey::Graphics::buffer vb = gd->CreateBuffer(bd, data);
+
+	sisskey::Graphics::VertexLayout il;
+	sisskey::Graphics::VertexLayoutDesc pos;
+	pos.SemanticName = "POSITION";
+	pos.Format = sisskey::Graphics::FORMAT::R32G32_FLOAT;
+	il.push_back(pos);
+
+	sisskey::Graphics::VertexLayoutDesc col;
+	col.SemanticName = "COLOR";
+	col.Format = sisskey::Graphics::FORMAT::R32G32B32_FLOAT;
+	il.push_back(col);
+	
 	sisskey::Graphics::GraphicsPipelineDesc gpd;
 	gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "vert.spv");
 	gpd.ps = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "frag.spv");
 	gpd.numRTs = 1;
 	gpd.RTFormats[0] = gd->GetBackBufferFormat();
+	gpd.InputLayout = std::move(il);
 
 	sisskey::Graphics::DepthStencilStateDesc dss{};
 	dss.DepthEnable = true;
@@ -90,9 +123,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 	auto p = gd->CreateGraphicsPipeline(gpd);
 
-	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render(p);
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render(p, vb);
 
 	gd->DestroyGraphicsPipeline(p);
+
+	gd->DestroyBuffer(vb);
 
 	return 0;
 }
