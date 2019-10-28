@@ -14,7 +14,7 @@
 namespace sisskey::Graphics
 {
 	// handle for all GraphicsDevice's resources
-	using handle = std::uint64_t;
+	using handle = std::uintptr_t;
 	static_assert(sizeof(void*) == sizeof(handle));
 
 	// http://blog.bitwigglers.org/using-enum-classes-as-type-safe-bitmasks/
