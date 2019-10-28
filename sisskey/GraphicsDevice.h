@@ -49,6 +49,15 @@ namespace sisskey
 
 		[[nodiscard]] static std::unique_ptr<GraphicsDevice> Create(std::shared_ptr<Window> window, PresentMode mode = PresentMode::Windowed, API api = API::Vulkan);
 
+		virtual void Begin(/*clear value*/) = 0;
+		virtual void End() = 0;
+
+		virtual void BindPipeline(Graphics::handle pipeline) = 0;
+		virtual void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) = 0;
+		virtual void BindViewports(const std::vector<Graphics::Viewport>& viewports) = 0;
+		virtual void BindScissorRects(const std::vector<Graphics::Rect>& scissors) = 0;
+		virtual void Draw(std::uint32_t count, std::uint32_t start) = 0;
+
 		virtual Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
 		virtual void DestroyGraphicsPipeline(Graphics::handle pipeline) = 0;
 
@@ -59,6 +68,7 @@ namespace sisskey
 		// virtual void BindStencilRef(std::uint32_t value, cmdlist index) = 0;
 
 		// These are test methods
+		// TODO: remove
 		virtual void Render() = 0;
 		virtual void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) = 0;
 

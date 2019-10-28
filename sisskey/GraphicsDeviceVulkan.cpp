@@ -450,7 +450,7 @@ namespace sisskey
 			}
 		}
 
-		inline vk::Viewport VK_Viewport(Viewport vp)
+		inline vk::Viewport VK_Viewport(const Viewport& vp)
 		{
 			return { vp.TopLeftX, vp.TopLeftY + vp.Height, vp.Width, -vp.Height, vp.MinDepth, vp.MaxDepth };
 		}
@@ -813,7 +813,8 @@ namespace sisskey
 		m_fence = m_device->createFenceUnique({});
 		m_device->resetFences(m_fence.get());
 
-		m_sem = m_device->createSemaphoreUnique({});
+		m_imageSemaphore = m_device->createSemaphoreUnique({});
+		m_renderSemaphore = m_device->createSemaphoreUnique({});
 
 		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsQueue->first };
 		m_pool = m_device->createCommandPoolUnique(poolInfo);
@@ -832,13 +833,113 @@ namespace sisskey
 		vmaDestroyAllocator(m_vma);
 	}
 
+	void GraphicsDeviceVulkan::Begin()
+	{
+		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
+		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
+		m_device->resetFences(m_fence.get());
+
+		m_currentBackBuffer = imageIndex.value;
+
+		// TODO: interleaved frames
+		m_GraphicsQueue.waitIdle(); // wait for previous frame
+		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+		m_cmd[0]->begin(begin);
+
+		std::array<vk::ClearValue, 2> cv{};
+		// const float* c = DirectX::Colors::LightSteelBlue;
+		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
+		// cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
+		static float color = 0.0f;
+		color += 0.03f;
+		cv[0].color.setFloat32({ sinf(color) * 0.5f + 0.5f,
+								sinf(color + 3.141593f / 6.0f) * 0.5f + 0.5f,
+								sinf(color + 2.0f * 3.141593f / 6.0f) * 0.5f + 0.5f,
+								1.0f });
+		cv[1].depthStencil.depth = 1.f;
+		cv[1].depthStencil.stencil = 0;
+
+		vk::RenderPassBeginInfo rpBegin{ m_rp.get(), m_fb[imageIndex.value].get(),
+										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
+										static_cast<std::uint32_t>(cv.size()), cv.data() };
+		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
+	}
+
+	void GraphicsDeviceVulkan::End()
+	{
+		m_cmd[0]->endRenderPass();
+
+		m_cmd[0]->end();
+
+		std::vector<vk::CommandBuffer> v;
+		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
+		vk::SubmitInfo submit{};
+		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
+		submit.pCommandBuffers = v.data();
+		submit.signalSemaphoreCount = 1;
+		submit.pSignalSemaphores = &m_renderSemaphore.get();
+		m_GraphicsQueue.submit(submit, vk::Fence{});
+
+		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &m_currentBackBuffer };
+		m_PresentQueue.presentKHR(presentInfo);
+	}
+
+	void GraphicsDeviceVulkan::BindPipeline(Graphics::handle pipeline)
+	{
+		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, { reinterpret_cast<VkPipeline>(pipeline) });
+	}
+
+	void GraphicsDeviceVulkan::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets)
+	{
+		assert(buffers.size() == offsets.size());
+		std::vector<vk::Buffer> vb(buffers.size());
+		std::vector<vk::DeviceSize> of(offsets.size());
+
+		std::transform(buffers.begin(), buffers.end(), vb.begin(),
+					   [](const Graphics::buffer& b) -> vk::Buffer
+					   {
+						   return { reinterpret_cast<VkBuffer>(b.resource) };
+					   });
+		std::transform(offsets.begin(), offsets.end(), of.begin(), [](const auto& o) -> vk::DeviceSize { return { 0 }; });
+
+		m_cmd[0]->bindVertexBuffers(start, vb, of);
+	}
+
+	void GraphicsDeviceVulkan::BindViewports(const std::vector<Graphics::Viewport>& viewports)
+	{
+		std::vector<vk::Viewport> vp(viewports.size());
+		std::transform(viewports.begin(), viewports.end(), vp.begin(), Graphics::VK_Viewport);
+		m_cmd[0]->setViewport(0, vp);
+	}
+
+	void GraphicsDeviceVulkan::BindScissorRects(const std::vector<Graphics::Rect>& scissors)
+	{
+		std::vector<vk::Rect2D> rc(scissors.size());
+		std::transform(scissors.begin(), scissors.end(), rc.begin(),
+					   [](const Graphics::Rect& r) -> vk::Rect2D
+					   {
+						   assert(r.right >= r.left);
+						   assert(r.bottom >= r.top);
+						   return { { static_cast<std::int32_t>(r.left), static_cast<std::int32_t>(r.top) },
+									{ static_cast<std::uint32_t>(r.right - r.left), static_cast<std::uint32_t>(r.bottom - r.top) }
+								  };
+					   });
+		m_cmd[0]->setScissor(0, rc);
+	}
+
+	void GraphicsDeviceVulkan::Draw(std::uint32_t count, std::uint32_t start)
+	{
+		m_cmd[0]->draw(count, 1, start, 0);
+	}
+
 	void GraphicsDeviceVulkan::Render()
 	{
 		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
 		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
 		m_device->resetFences(m_fence.get());
-		m_GraphicsQueue.waitIdle();
-
+		
+		// TODO: interleaved frames
+		m_GraphicsQueue.waitIdle(); // wait for previous frame
 		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
 		m_cmd[0]->begin(begin);
 
@@ -873,10 +974,10 @@ namespace sisskey
 		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
 		submit.pCommandBuffers = v.data();
 		submit.signalSemaphoreCount = 1;
-		submit.pSignalSemaphores = &m_sem.get();
+		submit.pSignalSemaphores = &m_renderSemaphore.get();
 		m_GraphicsQueue.submit(submit, vk::Fence{});
 
-		vk::PresentInfoKHR presentInfo{ 1, &m_sem.get(), 1, &m_swapchain.get(), &imageIndex.value};
+		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &imageIndex.value};
 		m_PresentQueue.presentKHR(presentInfo);
 	}
 
@@ -885,8 +986,9 @@ namespace sisskey
 		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
 		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
 		m_device->resetFences(m_fence.get());
-		m_GraphicsQueue.waitIdle();
-
+		
+		// TODO: interleaved frames
+		m_GraphicsQueue.waitIdle(); // wait for previous frame
 		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
 		m_cmd[0]->begin(begin);
 
@@ -933,10 +1035,10 @@ namespace sisskey
 		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
 		submit.pCommandBuffers = v.data();
 		submit.signalSemaphoreCount = 1;
-		submit.pSignalSemaphores = &m_sem.get();
+		submit.pSignalSemaphores = &m_renderSemaphore.get();
 		m_GraphicsQueue.submit(submit, vk::Fence{});
 
-		vk::PresentInfoKHR presentInfo{ 1, &m_sem.get(), 1, &m_swapchain.get(), &imageIndex.value };
+		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &imageIndex.value };
 		m_PresentQueue.presentKHR(presentInfo);
 	}
 

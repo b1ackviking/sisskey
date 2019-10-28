@@ -36,7 +36,8 @@ namespace sisskey
 		vk::UniqueCommandPool m_pool;
 		std::vector<vk::UniqueCommandBuffer> m_cmd;
 		vk::UniqueFence m_fence;
-		vk::UniqueSemaphore m_sem;
+		vk::UniqueSemaphore m_imageSemaphore; // TODO: allow interleaved frames
+		vk::UniqueSemaphore m_renderSemaphore;
 
 		void m_SetWidthHeight(); // TODO: should this be in a base class ??
 		void m_CreateInstance();
@@ -99,6 +100,8 @@ namespace sisskey
 
 		vk::UniquePipelineLayout m_pl;
 
+		std::uint32_t m_currentBackBuffer;
+
 #ifndef NDEBUG
 		vk::DispatchLoaderDynamic m_loader;
 
@@ -115,6 +118,15 @@ namespace sisskey
 	public:
 		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
 		~GraphicsDeviceVulkan();
+
+		void Begin(/*clear value*/) final;
+		void End() final;
+
+		void BindPipeline(Graphics::handle pipeline) final;
+		void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) final;
+		void BindViewports(const std::vector<Graphics::Viewport>& viewports) final;
+		void BindScissorRects(const std::vector<Graphics::Rect>& scissors) final;
+		void Draw(std::uint32_t count, std::uint32_t start) final;
 
 		// These are test methods
 		void Render() final;

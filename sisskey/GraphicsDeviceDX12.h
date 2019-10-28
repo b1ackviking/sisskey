@@ -94,6 +94,15 @@ namespace sisskey
 			m_FlushCommandQueue();
 		}
 
+		void Begin(/*clear value*/) final {}
+		void End() final {}
+
+		void BindPipeline(Graphics::handle pipeline) final {}
+		void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) final {}
+		void BindViewports(const std::vector<Graphics::Viewport>& viewports) final {}
+		void BindScissorRects(const std::vector<Graphics::Rect>& scissors) final {}
+		void Draw(std::uint32_t count, std::uint32_t start) final {}
+
 		// These are test methods
 		void Render() final;
 		void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) final {}

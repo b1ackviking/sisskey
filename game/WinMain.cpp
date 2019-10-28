@@ -123,7 +123,19 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 	auto p = gd->CreateGraphicsPipeline(gpd);
 
-	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit) gd->Render(p, vb);
+	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit)
+	{
+		auto[width, height] = w->GetSize();
+		sisskey::Graphics::Viewport vp{ 0, 0, width, height, .0f, 1.f };
+		sisskey::Graphics::Rect sr{ 0, 0, width, height };
+		gd->Begin();
+		gd->BindViewports({ vp });
+		gd->BindScissorRects({ sr });
+		gd->BindPipeline(p);
+		gd->BindVertexBuffers(0, { vb }, { 0 });
+		gd->Draw(3, 0);
+		gd->End();
+	}
 
 	gd->DestroyGraphicsPipeline(p);
 
