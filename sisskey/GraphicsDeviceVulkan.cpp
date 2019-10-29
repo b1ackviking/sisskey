@@ -793,7 +793,7 @@ namespace sisskey
 
 		return BestMode;
 	}
-	
+
 	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
@@ -822,7 +822,7 @@ namespace sisskey
 		vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
 		m_cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
 	}
-	
+
 	GraphicsDeviceVulkan::~GraphicsDeviceVulkan()
 	{
 		m_GraphicsQueue.waitIdle();
@@ -937,7 +937,7 @@ namespace sisskey
 		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
 		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
 		m_device->resetFences(m_fence.get());
-		
+
 		// TODO: interleaved frames
 		m_GraphicsQueue.waitIdle(); // wait for previous frame
 		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
@@ -986,7 +986,7 @@ namespace sisskey
 		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
 		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
 		m_device->resetFences(m_fence.get());
-		
+
 		// TODO: interleaved frames
 		m_GraphicsQueue.waitIdle(); // wait for previous frame
 		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
@@ -1149,7 +1149,7 @@ namespace sisskey
 			for (auto& item : *desc.InputLayout)
 			{
 				vk::VertexInputAttributeDescription attr{ i++, item.InputSlot, Graphics::VK_Format(item.Format), item.AlignedByteOffset };
-				
+
 				// clear offsets
 				if (attr.binding != lastBinding)
 				{
@@ -1279,7 +1279,7 @@ namespace sisskey
 		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
 		m_device->destroyPipeline(p);
 	}
-	
+
 	Graphics::buffer GraphicsDeviceVulkan::CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData)
 	{
 		vk::BufferUsageFlags usage{ vk::BufferUsageFlagBits::eTransferDst };
@@ -1296,14 +1296,15 @@ namespace sisskey
 			else
 				usage |= vk::BufferUsageFlagBits::eStorageTexelBuffer;
 		}
-		
+
 		vk::BufferCreateInfo bufferInfo{ {}, desc.ByteWidth, usage };
 		VmaAllocationCreateInfo allocInfo{};
 		allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
 		VkBuffer buffer;
 		VmaAllocation alloc;
-		vmaCreateBuffer(m_vma, &static_cast<VkBufferCreateInfo>(bufferInfo), &allocInfo, &buffer, &alloc, nullptr);
-		
+		VkBufferCreateInfo bi = static_cast<VkBufferCreateInfo>(bufferInfo);
+		vmaCreateBuffer(m_vma, &bi, &allocInfo, &buffer, &alloc, nullptr);
+
 		if (initData)
 		{
 			void* data;
@@ -1314,7 +1315,7 @@ namespace sisskey
 
 		return { reinterpret_cast<Graphics::handle>(buffer), reinterpret_cast<Graphics::handle>(alloc) };
 	}
-	
+
 	void GraphicsDeviceVulkan::DestroyBuffer(Graphics::buffer buffer)
 	{
 		m_device->waitIdle();
