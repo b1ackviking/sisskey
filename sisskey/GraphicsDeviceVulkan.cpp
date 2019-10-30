@@ -41,6 +41,7 @@ namespace sisskey
 		case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
 			spdlog::error("[{}] {}", type, pCallbackData->pMessage);
 			break;
+		default: break;
 		}
 		return VK_FALSE;
 	}
@@ -463,7 +464,7 @@ namespace sisskey
 		{
 			auto dms = m_pWindow->EnumDisplayModes();
 
-			auto it = std::find_if(dms.begin(), dms.end(), [w, h](const auto& m) {return w == m.dimentions.first && h == m.dimentions.second; });
+			auto it = std::find_if(dms.begin(), dms.end(), [width = w, height = h](const auto& m) { return width == m.dimentions.first && height == m.dimentions.second; });
 			if (it != dms.end())
 			{
 				m_Width = w;
@@ -900,7 +901,7 @@ namespace sisskey
 					   {
 						   return { reinterpret_cast<VkBuffer>(b.resource) };
 					   });
-		std::transform(offsets.begin(), offsets.end(), of.begin(), [](const auto& o) -> vk::DeviceSize { return { 0 }; });
+		std::transform(offsets.begin(), offsets.end(), of.begin(), [](const auto& o) -> vk::DeviceSize { return o; });
 
 		m_cmd[0]->bindVertexBuffers(start, vb, of);
 	}
