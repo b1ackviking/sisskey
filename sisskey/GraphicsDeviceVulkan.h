@@ -18,6 +18,7 @@
 #include <vk_mem_alloc.h>
 
 #include <optional>
+#include <mutex>
 
 namespace sisskey
 {
@@ -32,7 +33,14 @@ namespace sisskey
 		vk::UniqueDevice m_device;
 		vk::Queue m_PresentQueue;
 		vk::Queue m_GraphicsQueue;
+
 		vk::Queue m_CopyQueue;
+		vk::UniqueCommandPool m_copyPool;
+		vk::UniqueCommandBuffer m_copyCommandBuffer;
+		vk::UniqueFence m_copyFence;
+		std::vector<Graphics::buffer> m_copyBuffers;
+		std::mutex m_copyMutex;
+		
 		vk::UniqueCommandPool m_pool;
 		std::vector<vk::UniqueCommandBuffer> m_cmd;
 		vk::UniqueFence m_fence;

@@ -816,11 +816,27 @@ namespace sisskey
 		m_imageSemaphore = m_device->createSemaphoreUnique({});
 		m_renderSemaphore = m_device->createSemaphoreUnique({});
 
-		vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsQueue->first };
-		m_pool = m_device->createCommandPoolUnique(poolInfo);
+		{
+			vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsQueue->first };
+			m_pool = m_device->createCommandPoolUnique(poolInfo);
 
-		vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
-		m_cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
+			vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
+			m_cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
+		}
+		{
+			vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.CopyQueue->first };
+			m_copyPool = m_device->createCommandPoolUnique(poolInfo);
+
+			vk::CommandBufferAllocateInfo cmdInfo{ m_copyPool.get(), vk::CommandBufferLevel::ePrimary, 1 };
+			auto cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
+			m_copyCommandBuffer = std::move(cmd[0]);
+			vk::CommandBufferBeginInfo beginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse };
+			m_copyCommandBuffer->begin(beginInfo);
+
+			m_copyFence = m_device->createFenceUnique({});
+			m_device->resetFences(m_copyFence.get());
+		}
+		
 	}
 
 	GraphicsDeviceVulkan::~GraphicsDeviceVulkan()
@@ -868,8 +884,33 @@ namespace sisskey
 	void GraphicsDeviceVulkan::End()
 	{
 		m_cmd[0]->endRenderPass();
-
 		m_cmd[0]->end();
+
+		// Copy resources
+		{
+			std::lock_guard l{ m_copyMutex };
+			m_copyCommandBuffer->end();
+
+			vk::SubmitInfo copySubmit{ 0, nullptr, nullptr, 1, &m_copyCommandBuffer.get() };
+
+			m_CopyQueue.submit(copySubmit, m_copyFence.get());
+
+			auto res = m_device->waitForFences(m_copyFence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
+			assert(res == vk::Result::eSuccess);
+
+			m_device->resetFences(m_copyFence.get());
+			m_device->resetCommandPool(m_copyPool.get(), {});
+
+			vk::CommandBufferBeginInfo beginInfo{ vk::CommandBufferUsageFlagBits::eSimultaneousUse };
+			m_copyCommandBuffer->begin(beginInfo);
+
+			std::for_each(m_copyBuffers.begin(), m_copyBuffers.end(),
+							[this](Graphics::buffer& b)
+							{
+								vmaDestroyBuffer(m_vma, reinterpret_cast<VkBuffer>(b.resource), reinterpret_cast<VmaAllocation>(b.allocation));
+							});
+			m_copyBuffers.clear();
+		}
 
 		std::vector<vk::CommandBuffer> v;
 		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
@@ -1282,6 +1323,9 @@ namespace sisskey
 
 	Graphics::buffer GraphicsDeviceVulkan::CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData)
 	{
+		VkBuffer buffer;
+		VmaAllocation alloc;
+
 		vk::BufferUsageFlags usage{ vk::BufferUsageFlagBits::eTransferDst };
 		if (desc.BindFlags & Graphics::BIND_FLAG::VERTEX_BUFFER)
 			usage |= vk::BufferUsageFlagBits::eVertexBuffer;
@@ -1298,19 +1342,66 @@ namespace sisskey
 		}
 
 		vk::BufferCreateInfo bufferInfo{ {}, desc.ByteWidth, usage };
-		VmaAllocationCreateInfo allocInfo{};
-		allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-		VkBuffer buffer;
-		VmaAllocation alloc;
 		VkBufferCreateInfo bi = static_cast<VkBufferCreateInfo>(bufferInfo);
-		vmaCreateBuffer(m_vma, &bi, &allocInfo, &buffer, &alloc, nullptr);
 
-		if (initData)
+		if (desc.Usage == Graphics::USAGE::DYNAMIC) // or if (desc.BindFlags == Graphics::BIND_FLAG::CONSTANT_BUFFER) ??
 		{
-			void* data;
-			vmaMapMemory(m_vma, alloc, &data);
-			std::memcpy(data, initData->pSysMem, desc.ByteWidth);
-			vmaUnmapMemory(m_vma, alloc);
+			VmaAllocationCreateInfo allocInfo{};
+			allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+			vmaCreateBuffer(m_vma, &bi, &allocInfo, &buffer, &alloc, nullptr);
+
+			if (initData)
+			{
+				void* data;
+				vmaMapMemory(m_vma, alloc, &data);
+				std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+				vmaUnmapMemory(m_vma, alloc);
+			}
+		}
+		else
+		{
+			VmaAllocationCreateInfo allocInfo{};
+			allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+			vmaCreateBuffer(m_vma, &bi, &allocInfo, &buffer, &alloc, nullptr);
+
+			if (initData)
+			{
+				vk::BufferCreateInfo uploadBufferInfo{ {}, desc.ByteWidth, vk::BufferUsageFlagBits::eTransferSrc };
+				VkBufferCreateInfo ubi = static_cast<VkBufferCreateInfo>(uploadBufferInfo);
+				VmaAllocationCreateInfo uploadAllocInfo{};
+				uploadAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+				VkBuffer uploadBuffer;
+				VmaAllocation uploadAlloc;
+				vmaCreateBuffer(m_vma, &ubi, &uploadAllocInfo, &uploadBuffer, &uploadAlloc, nullptr);
+				m_copyBuffers.push_back({ reinterpret_cast<Graphics::handle>(uploadBuffer), reinterpret_cast<Graphics::handle>(uploadAlloc) });
+
+				void* data;
+				vmaMapMemory(m_vma, uploadAlloc, &data);
+				std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+				vmaUnmapMemory(m_vma, uploadAlloc);
+
+				vk::BufferCopy region{ 0, 0, desc.ByteWidth };
+
+				vk::BufferMemoryBarrier barrierBefore{ {}, vk::AccessFlagBits::eTransferWrite, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, buffer };
+
+				vk::BufferMemoryBarrier barrierAfter{ barrierBefore.dstAccessMask, {}, m_QueueFamilyIndices.CopyQueue->first, m_QueueFamilyIndices.GraphicsQueue->first, buffer };
+
+				if (desc.BindFlags & Graphics::BIND_FLAG::CONSTANT_BUFFER)
+					barrierAfter.dstAccessMask |= vk::AccessFlagBits::eUniformRead;
+				if (desc.BindFlags & Graphics::BIND_FLAG::VERTEX_BUFFER)
+					barrierAfter.dstAccessMask |= vk::AccessFlagBits::eIndexRead; // ??
+				if (desc.BindFlags & Graphics::BIND_FLAG::INDEX_BUFFER)
+					barrierAfter.dstAccessMask |= vk::AccessFlagBits::eIndexRead;
+				if (desc.BindFlags & Graphics::BIND_FLAG::SHADER_RESOURCE)
+					barrierAfter.dstAccessMask |= vk::AccessFlagBits::eShaderRead;
+				if (desc.BindFlags & Graphics::BIND_FLAG::UNORDERED_ACCESS)
+					barrierAfter.dstAccessMask |= vk::AccessFlagBits::eShaderWrite;
+
+				std::lock_guard l{ m_copyMutex };
+				m_copyCommandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eTransfer, {}, {}, barrierBefore, {});
+				m_copyCommandBuffer->copyBuffer(uploadBuffer, buffer, region);
+				m_copyCommandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllCommands, {}, {}, barrierAfter, {});
+			}
 		}
 
 		return { reinterpret_cast<Graphics::handle>(buffer), reinterpret_cast<Graphics::handle>(alloc) };

@@ -126,7 +126,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit)
 	{
 		auto[width, height] = w->GetSize();
-		sisskey::Graphics::Viewport vp{ 0, 0, width, height, .0f, 1.f };
+		sisskey::Graphics::Viewport vp{ .0f, .0f, static_cast<float>(width), static_cast<float>(height), .0f, 1.f };
 		sisskey::Graphics::Rect sr{ 0, 0, width, height };
 		gd->Begin();
 		gd->BindViewports({ vp });
