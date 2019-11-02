@@ -14,7 +14,7 @@ namespace sisskey
 		Window::PMResult res{ Window::PMResult::Nothing };
 		xcb_generic_event_t* event;
 
-		while (event = xcb_poll_for_event(m_pConnection))
+		while ( (event = xcb_poll_for_event(m_pConnection)) )
 		{
 			// https://xcb.freedesktop.org/manual/xproto_8h_source.html
 			switch (event->response_type & ~0x80)
