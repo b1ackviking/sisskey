@@ -43,6 +43,9 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{5055538d-3cd5-49f4-93c9-0d303df0cd88}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\GraphicsDevice\DX12\external">
+      <UniqueIdentifier>{f4b23d28-ed3d-4e26-a2e6-a70e7e2df95a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -72,6 +75,9 @@
     <ClCompile Include="vk_mem_alloc.cpp">
       <Filter>Core\GraphicsDevice\Vulkan</Filter>
     </ClCompile>
+    <ClCompile Include="D3D12MemAlloc.cpp">
+      <Filter>Core\GraphicsDevice\DX12\external</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine.h">
@@ -98,11 +104,14 @@
     <ClInclude Include="GraphicsDeviceDX12.h">
       <Filter>Core\GraphicsDevice\DX12</Filter>
     </ClInclude>
-    <ClInclude Include="d3dx12.h">
-      <Filter>Core\GraphicsDevice\DX12</Filter>
-    </ClInclude>
     <ClInclude Include="GraphicsDescriptors.h">
       <Filter>Core\GraphicsDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="d3dx12.h">
+      <Filter>Core\GraphicsDevice\DX12\external</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12MemAlloc.h">
+      <Filter>Core\GraphicsDevice\DX12\external</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

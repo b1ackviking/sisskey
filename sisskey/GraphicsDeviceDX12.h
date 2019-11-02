@@ -10,7 +10,10 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 
+#include "D3D12MemAlloc.h"
+
 #include <vector>
+#include <functional>
 
 namespace sisskey
 {
@@ -50,6 +53,10 @@ namespace sisskey
 
 		Microsoft::WRL::ComPtr<IDXGIFactory7> m_pFactory;
 		Microsoft::WRL::ComPtr<ID3D12Device6> m_pDevice;
+
+		using D3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, std::function<void(D3D12MA::Allocator * a)>>;
+		D3D12MemoryAllocator m_d3dma;
+
 		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pFence;
 		Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_pCommandQueue;
 		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_pDirectCmdListAlloc;

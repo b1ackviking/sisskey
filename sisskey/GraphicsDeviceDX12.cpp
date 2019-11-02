@@ -522,6 +522,16 @@ namespace sisskey
 #endif // !NDEBUG
 		}
 
+		// Create D3D12MemoryAllocator
+		{
+			D3D12MA::ALLOCATOR_DESC allocatorDesc{};
+			allocatorDesc.pDevice = m_pDevice.Get();
+
+			D3D12MA::Allocator* allocator;
+			HRESULT hr = D3D12MA::CreateAllocator(&allocatorDesc, &allocator);
+			m_d3dma = D3D12MemoryAllocator{ allocator, [](D3D12MA::Allocator* a) { a->Release(); } };
+		}
+
 		// Create Fence
 		{
 			Microsoft::WRL::ComPtr<ID3D12Fence> f;

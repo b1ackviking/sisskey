@@ -17,7 +17,8 @@ if (UNIX)
 	set(SOURCES ${SOURCES}	WindowXCB.h WindowXCB.cpp)
 elseif(WIN32)
 	set(SOURCES ${SOURCES}	WindowWinAPI.h WindowWinAPI.cpp
-							GraphicsDeviceDX12.h GraphicsDeviceDX12.cpp)
+							GraphicsDeviceDX12.h GraphicsDeviceDX12.cpp
+							d3dx12.h D3D12MemAlloc.h D3D12MemAlloc.cpp)
 endif()
 
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
