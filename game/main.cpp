@@ -43,6 +43,18 @@ int main(int argc, char** argv)
 	data.pSysMem = vertices.data();
 	sisskey::Graphics::buffer vb = gd->CreateBuffer(bd, data);
 
+	const std::vector<std::uint16_t> indices{
+		0, 1, 2,
+		2, 1, 3,
+	};
+
+	sisskey::Graphics::GPUBufferDesc ibd;
+	ibd.BindFlags = sisskey::Graphics::BIND_FLAG::INDEX_BUFFER;
+	ibd.ByteWidth = static_cast<unsigned int>(indices.size() * sizeof(std::uint16_t));
+	sisskey::Graphics::SubresourceData idata;
+	idata.pSysMem = indices.data();
+	sisskey::Graphics::buffer ib = gd->CreateBuffer(ibd, idata);
+
 	sisskey::Graphics::VertexLayout il;
 	sisskey::Graphics::VertexLayoutDesc pos;
 	pos.SemanticName = "POSITION";
@@ -80,12 +92,13 @@ int main(int argc, char** argv)
 		gd->BindScissorRects({ sr });
 		gd->BindPipeline(p);
 		gd->BindVertexBuffers(0, { vb }, { 0 });
-		gd->Draw(3, 0);
+		gd->BindIndexBuffer(ib, 0, sisskey::Graphics::INDEXBUFFER_FORMAT::UINT16);
+		gd->DrawIndexed(static_cast<std::uint32_t>(indices.size()), 0, 0);
 		gd->End();
 	}
 
 	gd->DestroyGraphicsPipeline(p);
-
+	gd->DestroyBuffer(ib);
 	gd->DestroyBuffer(vb);
 
 	return 0;
