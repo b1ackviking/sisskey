@@ -1,6 +1,7 @@
 .vs/
 .vscode/
 tmp/
+build/
 exe/
 lib/
 data/
