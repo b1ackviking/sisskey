@@ -293,8 +293,8 @@ namespace sisskey::Graphics
 	};
 	enum class INDEXBUFFER_FORMAT
 	{
-		INDEXFORMAT_16BIT,
-		INDEXFORMAT_32BIT,
+		UINT16,
+		UINT32,
 	};
 
 	// Flags

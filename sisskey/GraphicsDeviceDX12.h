@@ -101,7 +101,9 @@ namespace sisskey
 		void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) final {}
 		void BindViewports(const std::vector<Graphics::Viewport>& viewports) final {}
 		void BindScissorRects(const std::vector<Graphics::Rect>& scissors) final {}
+		void BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format) final {}
 		void Draw(std::uint32_t count, std::uint32_t start) final {}
+		void DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex) final {}
 
 		// These are test methods
 		void Render() final;

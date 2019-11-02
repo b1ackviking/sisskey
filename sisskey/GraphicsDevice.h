@@ -56,7 +56,9 @@ namespace sisskey
 		virtual void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) = 0;
 		virtual void BindViewports(const std::vector<Graphics::Viewport>& viewports) = 0;
 		virtual void BindScissorRects(const std::vector<Graphics::Rect>& scissors) = 0;
+		virtual void BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format) = 0;
 		virtual void Draw(std::uint32_t count, std::uint32_t start) = 0;
+		virtual void DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex) = 0;
 
 		virtual Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
 		virtual void DestroyGraphicsPipeline(Graphics::handle pipeline) = 0;

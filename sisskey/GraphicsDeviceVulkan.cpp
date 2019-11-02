@@ -969,9 +969,20 @@ namespace sisskey
 		m_cmd[0]->setScissor(0, rc);
 	}
 
+	void sisskey::GraphicsDeviceVulkan::BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format)
+	{
+		m_cmd[0]->bindIndexBuffer(reinterpret_cast<VkBuffer>(indexBuffer.resource), offsest,
+								  format == Graphics::INDEXBUFFER_FORMAT::UINT16 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+	}
+
 	void GraphicsDeviceVulkan::Draw(std::uint32_t count, std::uint32_t start)
 	{
 		m_cmd[0]->draw(count, 1, start, 0);
+	}
+
+	void sisskey::GraphicsDeviceVulkan::DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex)
+	{
+		m_cmd[0]->drawIndexed(count, 1, startIndex, startVertex, 0);
 	}
 
 	void GraphicsDeviceVulkan::Render()
