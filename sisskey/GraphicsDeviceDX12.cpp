@@ -529,7 +529,7 @@ namespace sisskey
 
 			D3D12MA::Allocator* allocator;
 			HRESULT hr = D3D12MA::CreateAllocator(&allocatorDesc, &allocator);
-			m_d3dma = D3D12MemoryAllocator{ allocator, [](D3D12MA::Allocator* a) { a->Release(); } };
+			m_d3dma = D3D12MemoryAllocator{ allocator };
 		}
 
 		// Create Fence
@@ -625,8 +625,12 @@ namespace sisskey
 		optClear.DepthStencil.Depth = 1.0f;
 		optClear.DepthStencil.Stencil = 0;
 		{
+			D3D12MA::ALLOCATION_DESC allocDesc{};
+			allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
 			Microsoft::WRL::ComPtr<ID3D12Resource> dsb;
-			ThrowIfFailed(m_pDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, IID_PPV_ARGS(&dsb)));
+			D3D12MA::Allocation* a;
+			ThrowIfFailed(m_d3dma->CreateResource(&allocDesc, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, &a, IID_PPV_ARGS(&dsb)));
+			m_DSAlloc = D3D12MemoryAllocation{ a };
 			ThrowIfFailed(dsb.As(&m_pDepthStencilBuffer));
 		}
 		// Create descriptor to mip level 0 of entire resource using the

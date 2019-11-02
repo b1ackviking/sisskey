@@ -13,7 +13,6 @@
 #include "D3D12MemAlloc.h"
 
 #include <vector>
-#include <functional>
 
 namespace sisskey
 {
@@ -54,7 +53,14 @@ namespace sisskey
 		Microsoft::WRL::ComPtr<IDXGIFactory7> m_pFactory;
 		Microsoft::WRL::ComPtr<ID3D12Device6> m_pDevice;
 
-		using D3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, std::function<void(D3D12MA::Allocator * a)>>;
+		// TODO: replase with C++20's lambdas in unevaluated context
+		struct D3D12MemoryAllocationDeleter { void operator()(D3D12MA::Allocation* a) { a->Release(); } };
+		using D3D12MemoryAllocation = std::unique_ptr<D3D12MA::Allocation, D3D12MemoryAllocationDeleter>;
+
+		// TODO: replase with C++20's lambdas in unevaluated context
+		struct D3D12MemoryAllocatorDeleter { void operator()(D3D12MA::Allocator* a) { a->Release(); } };
+		using D3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, D3D12MemoryAllocatorDeleter>;
+
 		D3D12MemoryAllocator m_d3dma;
 
 		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pFence;
@@ -66,6 +72,7 @@ namespace sisskey
 		Microsoft::WRL::ComPtr<IDXGISwapChain4> m_pSwapChain;
 		Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[m_BackBufferCount];
 		Microsoft::WRL::ComPtr<ID3D12Resource1> m_pDepthStencilBuffer;
+		D3D12MemoryAllocation m_DSAlloc;
 		
 		D3D12_RECT m_ScissorRect;
 		D3D12_VIEWPORT m_ViewPort;
