@@ -22,6 +22,36 @@ namespace sisskey
 {
 	namespace Graphics
 	{
+		constexpr inline D3D12_PRIMITIVE_TOPOLOGY_TYPE DX12_PrimitiveTopologyType(PRIMITIVE_TOPOLOGY value)
+		{
+			switch (value)
+			{
+			case PRIMITIVE_TOPOLOGY::UNDEFINED:		return D3D12_PRIMITIVE_TOPOLOGY_TYPE_UNDEFINED;
+			case PRIMITIVE_TOPOLOGY::TRIANGLELIST:
+			case PRIMITIVE_TOPOLOGY::TRIANGLESTRIP:	return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			case PRIMITIVE_TOPOLOGY::POINTLIST:		return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+			case PRIMITIVE_TOPOLOGY::LINELIST:
+			case PRIMITIVE_TOPOLOGY::LINESTRIP:		return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+			case PRIMITIVE_TOPOLOGY::PATCHLIST:		return D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+			default:								return D3D12_PRIMITIVE_TOPOLOGY_TYPE_UNDEFINED;
+			}
+		}
+
+		constexpr inline D3D12_PRIMITIVE_TOPOLOGY DX12_PrimitiveTopology(PRIMITIVE_TOPOLOGY value)
+		{
+			switch (value)
+			{
+			case PRIMITIVE_TOPOLOGY::UNDEFINED:		return D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+			case PRIMITIVE_TOPOLOGY::TRIANGLELIST:	return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			case PRIMITIVE_TOPOLOGY::TRIANGLESTRIP:	return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+			case PRIMITIVE_TOPOLOGY::POINTLIST:		return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+			case PRIMITIVE_TOPOLOGY::LINELIST:		return D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+			case PRIMITIVE_TOPOLOGY::LINESTRIP:		return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
+			case PRIMITIVE_TOPOLOGY::PATCHLIST:		return D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST; // ??
+			default:								return D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+			}
+		}
+
 		constexpr inline UINT DX12_ColorWriteMask(COLOR_WRITE_ENABLE value)
 		{
 			UINT flag{};
@@ -529,7 +559,7 @@ namespace sisskey
 
 			D3D12MA::Allocator* allocator;
 			HRESULT hr = D3D12MA::CreateAllocator(&allocatorDesc, &allocator);
-			m_d3dma = D3D12MemoryAllocator{ allocator };
+			m_d3dma = UniqueD3D12MemoryAllocator{ allocator };
 		}
 
 		// Create Fence
@@ -557,7 +587,6 @@ namespace sisskey
 		// Create DirectCommandQueue, CommandAllocator and GraphicsCommandList
 		D3D12_COMMAND_QUEUE_DESC queueDesc{};
 		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-		queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 		ThrowIfFailed(m_pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_pCommandQueue)));
 		ThrowIfFailed(m_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_pDirectCmdListAlloc)));
 		{
@@ -566,6 +595,27 @@ namespace sisskey
 													   nullptr, // Initial PipelineStateObject
 													   IID_PPV_ARGS(&cl)));
 			ThrowIfFailed(cl.As(&m_pCommandList));
+		}
+
+		// Create CopyQueue, CopyCommandAllocator and CopyCommandList
+		D3D12_COMMAND_QUEUE_DESC copyQueueDesc{};
+		copyQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+		ThrowIfFailed(m_pDevice->CreateCommandQueue(&copyQueueDesc, IID_PPV_ARGS(&m_pCopyQueue)));
+		ThrowIfFailed(m_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_pCopyAllocator)));
+		{
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cl;
+			ThrowIfFailed(m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_pCopyAllocator.Get(), // Associated command allocator
+													   nullptr, // Initial PipelineStateObject
+													   IID_PPV_ARGS(&cl)));
+			ThrowIfFailed(cl.As(&m_pCopyCommandList));
+
+			ThrowIfFailed(m_pCopyCommandList->Close());
+			ThrowIfFailed(m_pCopyAllocator->Reset());
+			ThrowIfFailed(m_pCopyCommandList->Reset(m_pCopyAllocator.Get(), nullptr));
+
+			ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pCopyFence)));
+			m_CopyFenceEvent = CreateEventExW(NULL, FALSE, FALSE, EVENT_ALL_ACCESS);
+			m_CopyFenceValue = 1;
 		}
 
 		m_CreateSwapChain();
@@ -606,31 +656,17 @@ namespace sisskey
 		// Finally call ID3D11DeviceContext::ResolveSubresource to resolve the multisampled texture into your non-multisampled swap chain.
 
 		// Create the depth/stencil buffer and view.
-		D3D12_RESOURCE_DESC depthStencilDesc;
-		depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		depthStencilDesc.Alignment = 0;
-		depthStencilDesc.Width = m_Width;
-		depthStencilDesc.Height = m_Height;
-		depthStencilDesc.DepthOrArraySize = 1;
-		depthStencilDesc.MipLevels = 1;
-		depthStencilDesc.Format = m_DepthStencilFormat;
-		depthStencilDesc.SampleDesc.Count = 1;
-		depthStencilDesc.SampleDesc.Quality = 0;
-		depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-		
-		D3D12_CLEAR_VALUE optClear;
-		optClear.Format = m_DepthStencilFormat;
-		// TODO: Reverse Z projection
-		optClear.DepthStencil.Depth = 1.0f;
-		optClear.DepthStencil.Stencil = 0;
+		// Reverse Z ??
 		{
 			D3D12MA::ALLOCATION_DESC allocDesc{};
 			allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
 			Microsoft::WRL::ComPtr<ID3D12Resource> dsb;
 			D3D12MA::Allocation* a;
-			ThrowIfFailed(m_d3dma->CreateResource(&allocDesc, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optClear, &a, IID_PPV_ARGS(&dsb)));
-			m_DSAlloc = D3D12MemoryAllocation{ a };
+			ThrowIfFailed(m_d3dma->CreateResource(&allocDesc,
+												  &CD3DX12_RESOURCE_DESC::Tex2D(Graphics::DX12_Format(m_DepthStencilFormat),
+																				m_Width, m_Height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+												  D3D12_RESOURCE_STATE_COMMON, &CD3DX12_CLEAR_VALUE(Graphics::DX12_Format(m_DepthStencilFormat), 1.f, 0), &a, IID_PPV_ARGS(&dsb)));
+			m_DSAlloc = UniqueD3D12MemoryAllocation{ a };
 			ThrowIfFailed(dsb.As(&m_pDepthStencilBuffer));
 		}
 		// Create descriptor to mip level 0 of entire resource using the
@@ -656,9 +692,18 @@ namespace sisskey
 		ID3D12CommandList* cmdsLists[] = { m_pCommandList.Get() };
 		m_pCommandQueue->ExecuteCommandLists(1, cmdsLists);
 		m_FlushCommandQueue();
+
+		// TODO
+		D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
+		rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+		Microsoft::WRL::ComPtr<ID3DBlob> rootSigBlob;
+		Microsoft::WRL::ComPtr<ID3DBlob> rootSigError;
+		ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &rootSigBlob, &rootSigError));
+		ThrowIfFailed(m_pDevice->CreateRootSignature(0, rootSigBlob->GetBufferPointer(), rootSigBlob->GetBufferSize(), IID_PPV_ARGS(&m_grs)));
 	}
 
-	void GraphicsDeviceDX12::Render()
+	void GraphicsDeviceDX12::Begin()
 	{
 		// Reuse the memory associated with command recording.
 		// We can only reset when the associated command lists have finished
@@ -669,18 +714,50 @@ namespace sisskey
 		ThrowIfFailed(m_pCommandList->Reset(m_pDirectCmdListAlloc.Get(), nullptr));
 		// Indicate a state transition on the resource usage.
 		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-		// Set the viewport and scissor rect. This needs to be reset
-		// whenever the command list is reset.
-		m_pCommandList->RSSetViewports(1, &m_ViewPort);
-		m_pCommandList->RSSetScissorRects(1, &m_ScissorRect);
 		// Clear the back buffer and depth buffer.
 		m_pCommandList->ClearRenderTargetView(m_CurrentBackBufferView(), DirectX::Colors::LightSteelBlue, 0, nullptr);
 		m_pCommandList->ClearDepthStencilView(m_DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 		// Specify the buffers we are going to render to.
 		m_pCommandList->OMSetRenderTargets(1, &m_CurrentBackBufferView(), true, &m_DepthStencilView());
+
+		// TODO
+		m_pCommandList->SetGraphicsRootSignature(m_grs.Get());
+	}
+
+	void GraphicsDeviceDX12::End()
+	{
 		// Indicate a state transition on the resource usage.
 		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-		
+
+		{
+			std::lock_guard l{ m_CopyMutex };
+			m_pCopyCommandList->Close();
+			ID3D12CommandList* cmdsLists[] = { m_pCopyCommandList.Get() };
+			m_pCopyQueue->ExecuteCommandLists(1, cmdsLists);
+
+			// Signal and increment the fence value.
+			UINT64 fenceToWaitFor = m_CopyFenceValue++;
+			ThrowIfFailed(m_pCopyQueue->Signal(m_pCopyFence.Get(), fenceToWaitFor));
+
+			// Wait until the GPU is done copying.
+			if (m_pCopyFence->GetCompletedValue() < fenceToWaitFor)
+			{
+				ThrowIfFailed(m_pCopyFence->SetEventOnCompletion(fenceToWaitFor, m_CopyFenceEvent));
+				WaitForSingleObject(m_CopyFenceEvent, INFINITE);
+			}
+
+			ThrowIfFailed(m_pCopyAllocator->Reset());
+			ThrowIfFailed(m_pCopyCommandList->Reset(m_pCopyAllocator.Get(), nullptr));
+
+			std::for_each(m_copyBuffers.begin(), m_copyBuffers.end(),
+						  [](Graphics::buffer b)
+						  {
+							  reinterpret_cast<ID3D12Resource*>(b.resource)->Release();
+							  reinterpret_cast<D3D12MA::Allocation*>(b.allocation)->Release();
+						  });
+			m_copyBuffers.clear();
+		}
+
 		// Done recording commands.
 		ThrowIfFailed(m_pCommandList->Close());
 		// Add the command list to the queue for execution.
@@ -697,6 +774,259 @@ namespace sisskey
 		// inefficient and is done for simplicity. Later we will show how to
 		// organize our rendering code so we do not have to wait per frame.
 		m_FlushCommandQueue();
+	}
+
+	void GraphicsDeviceDX12::BindPipeline(Graphics::PipelineHandle pipeline)
+	{
+		m_pCommandList->SetPipelineState(reinterpret_cast<ID3D12PipelineState*>(pipeline.ph));
+		m_pCommandList->IASetPrimitiveTopology(Graphics::DX12_PrimitiveTopology(pipeline.pt));
+	}
+
+	void GraphicsDeviceDX12::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>& strides)
+	{
+		assert(buffers.size() == offsets.size());
+		assert(buffers.size() == strides.size());
+		std::vector<D3D12_VERTEX_BUFFER_VIEW> vb(buffers.size());
+
+		for (int i{}; i < vb.size(); ++i)
+		{
+			vb[i] = { reinterpret_cast<ID3D12Resource*>(buffers[i].resource)->GetGPUVirtualAddress() + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(offsets[i]),
+					static_cast<UINT>(reinterpret_cast<D3D12MA::Allocation*>(buffers[i].allocation)->GetSize() - offsets[i]), // ??
+					strides[i] };
+		}
+
+		m_pCommandList->IASetVertexBuffers(start, static_cast<UINT>(vb.size()), vb.data());
+	}
+
+	void GraphicsDeviceDX12::BindViewports(const std::vector<Graphics::Viewport>& viewports)
+	{
+		std::vector<D3D12_VIEWPORT> vp(viewports.size());
+		std::transform(viewports.begin(), viewports.end(), vp.begin(),
+					   [](const Graphics::Viewport& v) -> D3D12_VIEWPORT
+					   {
+						   return { v.TopLeftX, v.TopLeftY, v.Width, v.Height, v.MinDepth, v.MaxDepth };
+					   });
+		m_pCommandList->RSSetViewports(static_cast<UINT>(vp.size()), vp.data());
+	}
+
+	void GraphicsDeviceDX12::BindScissorRects(const std::vector<Graphics::Rect>& scissors)
+	{
+		std::vector<D3D12_RECT> rc(scissors.size());
+		std::transform(scissors.begin(), scissors.end(), rc.begin(),
+					   [](const Graphics::Rect& r) -> D3D12_RECT
+					   {
+						   assert(r.right >= r.left);
+						   assert(r.bottom >= r.top);
+						   return { r.left, r.top, r.right, r.bottom };
+					   });
+		m_pCommandList->RSSetScissorRects(static_cast<UINT>(rc.size()), rc.data());
+	}
+
+	void GraphicsDeviceDX12::BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format)
+	{
+		D3D12_INDEX_BUFFER_VIEW ibv{};
+		ibv.BufferLocation = reinterpret_cast<ID3D12Resource*>(indexBuffer.resource)->GetGPUVirtualAddress() + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(offsest);
+		ibv.Format = format == Graphics::INDEXBUFFER_FORMAT::UINT16 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+		ibv.SizeInBytes = static_cast<UINT>(reinterpret_cast<D3D12MA::Allocation*>(indexBuffer.allocation)->GetSize() - offsest); // ??
+		m_pCommandList->IASetIndexBuffer(&ibv);
+	}
+
+	void GraphicsDeviceDX12::Draw(std::uint32_t count, std::uint32_t start)
+	{
+		m_pCommandList->DrawInstanced(count, 1, start, 0);
+	}
+
+	void GraphicsDeviceDX12::DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex)
+	{
+		m_pCommandList->DrawIndexedInstanced(count, 1, startIndex, startVertex, 0);
+	}
+
+	Graphics::PipelineHandle GraphicsDeviceDX12::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
+	{
+		// TODO
+		constexpr auto CONSERVATIVE_RASTERIZATION = false;
+
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psd{};
+
+		if (desc.vs)
+		{
+			psd.VS.pShaderBytecode = desc.vs->data();
+			psd.VS.BytecodeLength = desc.vs->size();
+		}
+		if (desc.hs)
+		{
+			psd.HS.pShaderBytecode = desc.hs->data();
+			psd.HS.BytecodeLength = desc.hs->size();
+		}
+		if (desc.ds)
+		{
+			psd.DS.pShaderBytecode = desc.ds->data();
+			psd.DS.BytecodeLength = desc.ds->size();
+		}
+		if (desc.gs)
+		{
+			psd.GS.pShaderBytecode = desc.gs->data();
+			psd.GS.BytecodeLength = desc.gs->size();
+		}
+		if (desc.ps)
+		{
+			psd.PS.pShaderBytecode = desc.ps->data();
+			psd.PS.BytecodeLength = desc.ps->size();
+		}
+
+		// D3DX ??
+		const Graphics::RasterizerStateDesc& rsd = desc.RasterizerState ? *desc.RasterizerState : Graphics::RasterizerStateDesc{};
+		psd.RasterizerState.FillMode				= Graphics::DX12_FillMode(rsd.FillMode);
+		psd.RasterizerState.CullMode				= Graphics::DX12_CullMode(rsd.CullMode);
+		psd.RasterizerState.FrontCounterClockwise	= rsd.FrontCounterClockwise;
+		psd.RasterizerState.DepthBias				= rsd.DepthBias;
+		psd.RasterizerState.DepthBiasClamp			= rsd.DepthBiasClamp;
+		psd.RasterizerState.SlopeScaledDepthBias	= rsd.SlopeScaledDepthBias;
+		psd.RasterizerState.DepthClipEnable			= rsd.DepthClipEnable;
+		psd.RasterizerState.MultisampleEnable		= rsd.MultisampleEnable;
+		psd.RasterizerState.AntialiasedLineEnable	= rsd.AntialiasedLineEnable;
+		psd.RasterizerState.ConservativeRaster		= (CONSERVATIVE_RASTERIZATION && rsd.ConservativeRasterizationEnable)
+													   ? D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON : D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+		psd.RasterizerState.ForcedSampleCount		= rsd.ForcedSampleCount;
+
+		const Graphics::DepthStencilStateDesc& dsd = desc.DepthStencilState ? *desc.DepthStencilState : Graphics::DepthStencilStateDesc{};
+		psd.DepthStencilState.DepthEnable					= dsd.DepthEnable;
+		psd.DepthStencilState.DepthWriteMask				= Graphics::DX12_DepthWriteMask(dsd.DepthWriteMask);
+		psd.DepthStencilState.DepthFunc						= Graphics::DX12_ComparisonFunc(dsd.DepthFunc);
+		psd.DepthStencilState.StencilEnable					= dsd.StencilEnable;
+		psd.DepthStencilState.StencilReadMask				= dsd.StencilReadMask;
+		psd.DepthStencilState.StencilWriteMask				= dsd.StencilWriteMask;
+		psd.DepthStencilState.FrontFace.StencilDepthFailOp	= Graphics::DX12_StencilOp(dsd.FrontFace.StencilDepthFailOp);
+		psd.DepthStencilState.FrontFace.StencilFailOp		= Graphics::DX12_StencilOp(dsd.FrontFace.StencilFailOp);
+		psd.DepthStencilState.FrontFace.StencilFunc			= Graphics::DX12_ComparisonFunc(dsd.FrontFace.StencilFunc);
+		psd.DepthStencilState.FrontFace.StencilPassOp		= Graphics::DX12_StencilOp(dsd.FrontFace.StencilPassOp);
+		psd.DepthStencilState.BackFace.StencilDepthFailOp	= Graphics::DX12_StencilOp(dsd.BackFace.StencilDepthFailOp);
+		psd.DepthStencilState.BackFace.StencilFailOp		= Graphics::DX12_StencilOp(dsd.BackFace.StencilFailOp);
+		psd.DepthStencilState.BackFace.StencilFunc			= Graphics::DX12_ComparisonFunc(dsd.BackFace.StencilFunc);
+		psd.DepthStencilState.BackFace.StencilPassOp		= Graphics::DX12_StencilOp(dsd.BackFace.StencilPassOp);
+
+		const Graphics::BlendStateDesc& bsd = desc.BlendState ? *desc.BlendState : Graphics::BlendStateDesc{};
+		psd.BlendState.AlphaToCoverageEnable = bsd.AlphaToCoverageEnable;
+		psd.BlendState.IndependentBlendEnable = bsd.IndependentBlendEnable;
+
+		static_assert(std::tuple_size_v<decltype(desc.BlendState->RenderTarget)> <= std::size(psd.BlendState.RenderTarget));
+		for (size_t i{}; i < std::size(psd.BlendState.RenderTarget); ++i)
+		{
+			psd.BlendState.RenderTarget[i].BlendEnable = bsd.RenderTarget[i].BlendEnable;
+			psd.BlendState.RenderTarget[i].SrcBlend = Graphics::DX12_Blend(bsd.RenderTarget[i].SrcBlend);
+			psd.BlendState.RenderTarget[i].DestBlend = Graphics::DX12_Blend(bsd.RenderTarget[i].DestBlend);
+			psd.BlendState.RenderTarget[i].BlendOp = Graphics::DX12_BlendOp(bsd.RenderTarget[i].BlendOp);
+			psd.BlendState.RenderTarget[i].SrcBlendAlpha = Graphics::DX12_Blend(bsd.RenderTarget[i].SrcBlendAlpha);
+			psd.BlendState.RenderTarget[i].DestBlendAlpha = Graphics::DX12_Blend(bsd.RenderTarget[i].DestBlendAlpha);
+			psd.BlendState.RenderTarget[i].BlendOpAlpha = Graphics::DX12_BlendOp(bsd.RenderTarget[i].BlendOpAlpha);
+			psd.BlendState.RenderTarget[i].RenderTargetWriteMask = Graphics::DX12_ColorWriteMask(bsd.RenderTarget[i].RenderTargetWriteMask);
+		}
+
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements;
+		if (desc.InputLayout)
+		{
+			inputElements.resize(static_cast<unsigned int>(desc.InputLayout->size()));
+
+			for (int i{}; i < inputElements.size(); ++i)
+			{
+				inputElements[i].SemanticName = (*desc.InputLayout)[i].SemanticName;
+				inputElements[i].SemanticIndex = (*desc.InputLayout)[i].SemanticIndex;
+				inputElements[i].Format = Graphics::DX12_Format((*desc.InputLayout)[i].Format);
+				inputElements[i].InputSlot = (*desc.InputLayout)[i].InputSlot;
+				inputElements[i].AlignedByteOffset = (*desc.InputLayout)[i].AlignedByteOffset == Graphics::VertexLayoutDesc::APPEND_ALIGNED_ELEMENT
+													? D3D12_APPEND_ALIGNED_ELEMENT : (*desc.InputLayout)[i].AlignedByteOffset;
+				inputElements[i].InputSlotClass = Graphics::DX12_InputClassification((*desc.InputLayout)[i].InputSlotClass);
+				inputElements[i].InstanceDataStepRate = (*desc.InputLayout)[i].InstanceDataStepRate;
+			}
+		}
+		psd.InputLayout.NumElements = static_cast<UINT>(inputElements.size());
+		psd.InputLayout.pInputElementDescs = inputElements.data();
+
+		psd.NumRenderTargets = desc.numRTs;
+		assert(desc.numRTs <= std::size(psd.RTVFormats));
+		static_assert(std::tuple_size_v<decltype(desc.RTFormats)> <= std::size(psd.RTVFormats));
+		for (UINT i{}; i < psd.NumRenderTargets; ++i)
+			psd.RTVFormats[i] = Graphics::DX12_Format(desc.RTFormats[i]);
+		psd.DSVFormat = Graphics::DX12_Format(desc.DSFormat);
+
+		psd.SampleDesc.Count = desc.sampleDesc.Count;
+		psd.SampleDesc.Quality = desc.sampleDesc.Quality;
+		psd.SampleMask = desc.sampleMask;
+
+		psd.PrimitiveTopologyType = Graphics::DX12_PrimitiveTopologyType(desc.pt);
+
+		// ??
+		psd.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+
+		// TODO
+		psd.pRootSignature = m_grs.Get();
+
+		ID3D12PipelineState* pso;
+		ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psd, IID_PPV_ARGS(&pso)));
+
+		return { reinterpret_cast<Graphics::handle>(pso), desc.pt };
+	}
+
+	void GraphicsDeviceDX12::DestroyGraphicsPipeline(Graphics::PipelineHandle pipeline)
+	{
+		// TODO: gpu sync
+		reinterpret_cast<ID3D12PipelineState*>(pipeline.ph)->Release();
+	}
+
+	Graphics::buffer GraphicsDeviceDX12::CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData)
+	{
+		std::uint32_t alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+		if (desc.BindFlags & Graphics::BIND_FLAG::CONSTANT_BUFFER)
+			alignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+
+		constexpr auto AlignHelper = [](std::uint32_t size, std::uint32_t alignment)
+		{
+			const auto a = alignment - 1;
+			return (size + a) & ~a;
+		};
+		UINT64 alignedSize = AlignHelper(desc.ByteWidth, alignment);
+
+		// TODO: constant buffers
+		D3D12MA::ALLOCATION_DESC allocDesc{};
+		allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+		D3D12MA::Allocation* a;
+		ID3D12Resource* buffer;
+		ThrowIfFailed(m_d3dma->CreateResource(&allocDesc,
+											  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize, desc.BindFlags & Graphics::BIND_FLAG::UNORDERED_ACCESS ?
+																			 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+											  D3D12_RESOURCE_STATE_COMMON, nullptr, &a, IID_PPV_ARGS(&buffer)));
+
+		if (initData)
+		{
+			ID3D12Resource* uploadBuffer;
+			D3D12MA::Allocation* uploadAllocation;
+
+			D3D12MA::ALLOCATION_DESC uploadAllocDesc{};
+			uploadAllocDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+			ThrowIfFailed(m_d3dma->CreateResource(&uploadAllocDesc,
+												  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize),
+												  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &uploadAllocation, IID_PPV_ARGS(&uploadBuffer)));
+
+			m_copyBuffers.push_back({ reinterpret_cast<Graphics::handle>(uploadBuffer), reinterpret_cast<Graphics::handle>(uploadAllocation) });
+
+			void* data;
+			uploadBuffer->Map(0, nullptr, &data);
+			std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+			uploadBuffer->Unmap(0, nullptr);
+
+			std::lock_guard l{ m_CopyMutex };
+			m_pCopyCommandList->CopyResource(buffer, uploadBuffer);
+			//m_pCopyCommandList->CopyBufferRegion(buffer, 0, uploadBuffer, 0, desc.ByteWidth);
+		}
+
+		return { reinterpret_cast<Graphics::handle>(buffer), reinterpret_cast<Graphics::handle>(a) };
+	}
+
+	void GraphicsDeviceDX12::DestroyBuffer(Graphics::buffer buffer)
+	{
+		// TODO gpu sync
+		reinterpret_cast<ID3D12Resource*>(buffer.resource)->Release();
+		reinterpret_cast<D3D12MA::Allocation*>(buffer.allocation)->Release();
 	}
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GraphicsDeviceDX12::m_CurrentBackBufferView() const

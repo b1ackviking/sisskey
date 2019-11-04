@@ -13,16 +13,6 @@
 // TODO: stop using unsigned int
 namespace sisskey::Graphics
 {
-	// handle for all GraphicsDevice's resources
-	using handle = std::uintptr_t;
-	static_assert(sizeof(void*) == sizeof(handle));
-
-	struct buffer
-	{
-		handle resource;
-		handle allocation;
-	};
-
 	// http://blog.bitwigglers.org/using-enum-classes-as-type-safe-bitmasks/
 	template<typename Enum>
 	struct EnableBitMaskOperators
@@ -64,6 +54,7 @@ namespace sisskey::Graphics
 		TRIANGLESTRIP,
 		POINTLIST,
 		LINELIST,
+		LINESTRIP,
 		PATCHLIST,
 	};
 	enum class COMPARISON_FUNC
@@ -355,6 +346,21 @@ namespace sisskey::Graphics
 
 	// Structs
 
+	// handle for all GraphicsDevice's resources
+	using handle = std::uintptr_t;
+	static_assert(sizeof(void*) == sizeof(handle));
+
+	struct PipelineHandle
+	{
+		handle ph;
+		PRIMITIVE_TOPOLOGY pt;
+	};
+	struct buffer
+	{
+		handle resource;
+		handle allocation;
+	};
+
 	// will use char to represent shader bytecode
 	using Shader = std::vector<char>;
 
@@ -459,7 +465,7 @@ namespace sisskey::Graphics
 	{
 		bool AlphaToCoverageEnable{};
 		bool IndependentBlendEnable{};
-		RenderTargetBlendStateDesc RenderTarget[8];
+		std::array<RenderTargetBlendStateDesc, 8> RenderTarget;
 	};
 	struct GPUBufferDesc
 	{

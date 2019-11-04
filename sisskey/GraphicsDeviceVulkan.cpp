@@ -53,13 +53,14 @@ namespace sisskey
 		{
 			switch (value)
 			{
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::UNDEFINED:		return vk::PrimitiveTopology::ePointList;
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::TRIANGLELIST:	return vk::PrimitiveTopology::eTriangleList;
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::TRIANGLESTRIP:	return vk::PrimitiveTopology::eTriangleStrip;
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::POINTLIST:		return vk::PrimitiveTopology::ePointList;
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::LINELIST:		return vk::PrimitiveTopology::eLineList;
-			case sisskey::Graphics::PRIMITIVE_TOPOLOGY::PATCHLIST:		return vk::PrimitiveTopology::ePatchList;
-			default:													return vk::PrimitiveTopology::ePointList;
+			case PRIMITIVE_TOPOLOGY::UNDEFINED:		return vk::PrimitiveTopology::ePointList;
+			case PRIMITIVE_TOPOLOGY::TRIANGLELIST:	return vk::PrimitiveTopology::eTriangleList;
+			case PRIMITIVE_TOPOLOGY::TRIANGLESTRIP:	return vk::PrimitiveTopology::eTriangleStrip;
+			case PRIMITIVE_TOPOLOGY::POINTLIST:		return vk::PrimitiveTopology::ePointList;
+			case PRIMITIVE_TOPOLOGY::LINELIST:		return vk::PrimitiveTopology::eLineList;
+			case PRIMITIVE_TOPOLOGY::LINESTRIP:		return vk::PrimitiveTopology::eLineStrip;
+			case PRIMITIVE_TOPOLOGY::PATCHLIST:		return vk::PrimitiveTopology::ePatchList;
+			default:								return vk::PrimitiveTopology::ePointList;
 			}
 		}
 
@@ -926,12 +927,12 @@ namespace sisskey
 		m_PresentQueue.presentKHR(presentInfo);
 	}
 
-	void GraphicsDeviceVulkan::BindPipeline(Graphics::handle pipeline)
+	void GraphicsDeviceVulkan::BindPipeline(Graphics::PipelineHandle pipeline)
 	{
-		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, { reinterpret_cast<VkPipeline>(pipeline) });
+		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, { reinterpret_cast<VkPipeline>(pipeline.ph) });
 	}
 
-	void GraphicsDeviceVulkan::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets)
+	void GraphicsDeviceVulkan::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>&)
 	{
 		assert(buffers.size() == offsets.size());
 		std::vector<vk::Buffer> vb(buffers.size());
@@ -985,117 +986,7 @@ namespace sisskey
 		m_cmd[0]->drawIndexed(count, 1, startIndex, startVertex, 0);
 	}
 
-	void GraphicsDeviceVulkan::Render()
-	{
-		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
-		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
-		m_device->resetFences(m_fence.get());
-
-		// TODO: interleaved frames
-		m_GraphicsQueue.waitIdle(); // wait for previous frame
-		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-		m_cmd[0]->begin(begin);
-
-		std::array<vk::ClearValue, 2> cv{};
-		// const float* c = DirectX::Colors::LightSteelBlue;
-		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
-		// cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
-		static float color = 0.0f;
-		color += 0.03f;
-		cv[0].color.setFloat32({sinf(color) * 0.5f + 0.5f,
-								sinf(color + 3.141593f / 6.0f) * 0.5f + 0.5f,
-								sinf(color + 2.0f * 3.141593f / 6.0f) * 0.5f + 0.5f,
-								1.0f});
-		cv[1].depthStencil.depth = 1.f;
-		cv[1].depthStencil.stencil = 0;
-
-		vk::RenderPassBeginInfo rpBegin{ m_rp.get(), m_fb[imageIndex.value].get(),
-										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
-										static_cast<std::uint32_t>(cv.size()), cv.data() };
-		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-
-		vk::Viewport vp{ 0, static_cast<float>(m_Height), static_cast<float>(m_Width), static_cast<float>(-m_Height), .0f, 1.f };
-		m_cmd[0]->setViewport(0, vp);
-
-		m_cmd[0]->endRenderPass();
-
-		m_cmd[0]->end();
-
-		std::vector<vk::CommandBuffer> v;
-		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
-		vk::SubmitInfo submit{};
-		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
-		submit.pCommandBuffers = v.data();
-		submit.signalSemaphoreCount = 1;
-		submit.pSignalSemaphores = &m_renderSemaphore.get();
-		m_GraphicsQueue.submit(submit, vk::Fence{});
-
-		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &imageIndex.value};
-		m_PresentQueue.presentKHR(presentInfo);
-	}
-
-	void GraphicsDeviceVulkan::Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer)
-	{
-		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
-		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
-		m_device->resetFences(m_fence.get());
-
-		// TODO: interleaved frames
-		m_GraphicsQueue.waitIdle(); // wait for previous frame
-		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-		m_cmd[0]->begin(begin);
-
-		std::array<vk::ClearValue, 2> cv{};
-		// const float* c = DirectX::Colors::LightSteelBlue;
-		// cv[0].color.setFloat32({ c[0], c[1], c[2], c[3] });
-		// cv[0].color.setFloat32({ 1.f, 1.f, 0.f, 1.f });
-		static float color = 0.0f;
-		color += 0.03f;
-		cv[0].color.setFloat32({ sinf(color) * 0.5f + 0.5f,
-								sinf(color + 3.141593f / 6.0f) * 0.5f + 0.5f,
-								sinf(color + 2.0f * 3.141593f / 6.0f) * 0.5f + 0.5f,
-								1.0f });
-		cv[1].depthStencil.depth = 1.f;
-		cv[1].depthStencil.stencil = 0;
-
-		vk::RenderPassBeginInfo rpBegin{ m_rp.get(), m_fb[imageIndex.value].get(),
-										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
-										static_cast<std::uint32_t>(cv.size()), cv.data() };
-		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-
-		vk::Viewport vp{ 0, static_cast<float>(m_Height), static_cast<float>(m_Width), static_cast<float>(-m_Height), .0f, 1.f };
-		m_cmd[0]->setViewport(0, vp);
-
-		vk::Rect2D sc{ {}, m_SwapChainExtent };
-		m_cmd[0]->setScissor(0, sc);
-
-		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
-		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, p);
-
-		vk::Buffer vb{ reinterpret_cast<VkBuffer>(vertexBuffer.resource) };
-		vk::DeviceSize offset{};
-		m_cmd[0]->bindVertexBuffers(0, vb, offset);
-
-		m_cmd[0]->draw(3, 1, 0, 0);
-
-		m_cmd[0]->endRenderPass();
-
-		m_cmd[0]->end();
-
-		std::vector<vk::CommandBuffer> v;
-		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
-		vk::SubmitInfo submit{};
-		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
-		submit.pCommandBuffers = v.data();
-		submit.signalSemaphoreCount = 1;
-		submit.pSignalSemaphores = &m_renderSemaphore.get();
-		m_GraphicsQueue.submit(submit, vk::Fence{});
-
-		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &imageIndex.value };
-		m_PresentQueue.presentKHR(presentInfo);
-	}
-
-	Graphics::handle GraphicsDeviceVulkan::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
+	Graphics::PipelineHandle GraphicsDeviceVulkan::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
 	{
 		// This will be a dummy render pass used for pipeline validation
 		// https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html#renderpass-compatibility
@@ -1323,13 +1214,13 @@ namespace sisskey
 
 		auto pipeline = m_device->createGraphicsPipeline(pc.get(), pci);
 		auto ret = static_cast<VkPipeline>(pipeline);
-		return reinterpret_cast<Graphics::handle>(ret);
+		return { reinterpret_cast<Graphics::handle>(ret) };
 	}
 
-	void GraphicsDeviceVulkan::DestroyGraphicsPipeline(Graphics::handle pipeline)
+	void GraphicsDeviceVulkan::DestroyGraphicsPipeline(Graphics::PipelineHandle pipeline)
 	{
 		m_device->waitIdle();
-		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline) };
+		vk::Pipeline p{ reinterpret_cast<VkPipeline>(pipeline.ph) };
 		m_device->destroyPipeline(p);
 	}
 

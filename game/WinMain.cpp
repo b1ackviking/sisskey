@@ -73,7 +73,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	engine.Initialize();
 
 	auto w = sisskey::Window::Create();
-	auto gd = sisskey::GraphicsDevice::Create(w);
+	//auto gd = sisskey::GraphicsDevice::Create(w);
+	auto gd = sisskey::GraphicsDevice::Create(w, sisskey::GraphicsDevice::PresentMode::Windowed, sisskey::GraphicsDevice::API::DX12);
 	
 	
 	struct Vertex
@@ -121,8 +122,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	il.push_back(col);
 	
 	sisskey::Graphics::GraphicsPipelineDesc gpd;
-	gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "vert.spv");
-	gpd.ps = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "frag.spv");
+	//gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "vert.spv");
+	//gpd.ps = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "frag.spv");
+	gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "VertexShader.cso");
+	gpd.ps = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "PixelShader.cso");
 	gpd.numRTs = 1;
 	gpd.RTFormats[0] = gd->GetBackBufferFormat();
 	gpd.InputLayout = std::move(il);
@@ -145,7 +148,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 		gd->BindViewports({ vp });
 		gd->BindScissorRects({ sr });
 		gd->BindPipeline(p);
-		gd->BindVertexBuffers(0, { vb }, { 0 });
+		gd->BindVertexBuffers(0, { vb }, { 0 }, { sizeof(Vertex) });
 		gd->BindIndexBuffer(ib, 0, sisskey::Graphics::INDEXBUFFER_FORMAT::UINT16);
 		gd->DrawIndexed(static_cast<std::uint32_t>(indices.size()), 0, 0);
 		gd->End();

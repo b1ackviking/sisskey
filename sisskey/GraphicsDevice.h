@@ -52,27 +52,22 @@ namespace sisskey
 		virtual void Begin(/*clear value*/) = 0;
 		virtual void End() = 0;
 
-		virtual void BindPipeline(Graphics::handle pipeline) = 0;
-		virtual void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) = 0;
+		virtual void BindPipeline(Graphics::PipelineHandle pipeline) = 0;
+		virtual void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>& strides) = 0;
 		virtual void BindViewports(const std::vector<Graphics::Viewport>& viewports) = 0;
 		virtual void BindScissorRects(const std::vector<Graphics::Rect>& scissors) = 0;
 		virtual void BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format) = 0;
 		virtual void Draw(std::uint32_t count, std::uint32_t start) = 0;
 		virtual void DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex) = 0;
 
-		virtual Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
-		virtual void DestroyGraphicsPipeline(Graphics::handle pipeline) = 0;
+		virtual Graphics::PipelineHandle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) = 0;
+		virtual void DestroyGraphicsPipeline(Graphics::PipelineHandle pipeline) = 0;
 
 		virtual Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) = 0;
 		virtual void DestroyBuffer(Graphics::buffer buffer) = 0;
 
 		// TODO:
 		// virtual void BindStencilRef(std::uint32_t value, cmdlist index) = 0;
-
-		// These are test methods
-		// TODO: remove
-		virtual void Render() = 0;
-		virtual void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) = 0;
 
 		[[nodiscard]] static constexpr Graphics::FORMAT GetBackBufferFormat() noexcept { return m_BackBufferFormat; }
 		[[nodiscard]] static constexpr int GetBackBufferCount() noexcept { return m_BackBufferCount; }

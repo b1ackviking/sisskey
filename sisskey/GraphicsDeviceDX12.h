@@ -13,6 +13,7 @@
 #include "D3D12MemAlloc.h"
 
 #include <vector>
+#include <mutex>
 
 namespace sisskey
 {
@@ -48,31 +49,37 @@ namespace sisskey
 	{
 		// TODO: Organize this section
 	private:
-		static constexpr DXGI_FORMAT m_DepthStencilFormat{ DXGI_FORMAT_D24_UNORM_S8_UINT };
-
 		Microsoft::WRL::ComPtr<IDXGIFactory7> m_pFactory;
 		Microsoft::WRL::ComPtr<ID3D12Device6> m_pDevice;
 
-		// TODO: replase with C++20's lambdas in unevaluated context
-		struct D3D12MemoryAllocationDeleter { void operator()(D3D12MA::Allocation* a) { a->Release(); } };
-		using D3D12MemoryAllocation = std::unique_ptr<D3D12MA::Allocation, D3D12MemoryAllocationDeleter>;
+		struct ReleaseDeleter { template<typename T> void operator()(T* t) const { t->Release(); } };
+		using UniqueD3D12MemoryAllocation = std::unique_ptr<D3D12MA::Allocation, ReleaseDeleter>;
+		using UniqueD3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, ReleaseDeleter>;
 
-		// TODO: replase with C++20's lambdas in unevaluated context
-		struct D3D12MemoryAllocatorDeleter { void operator()(D3D12MA::Allocator* a) { a->Release(); } };
-		using D3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, D3D12MemoryAllocatorDeleter>;
-
-		D3D12MemoryAllocator m_d3dma;
+		UniqueD3D12MemoryAllocator m_d3dma;
 
 		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pFence;
 		Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_pCommandQueue;
 		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_pDirectCmdListAlloc;
 		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5> m_pCommandList;
+
+		Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_pCopyQueue;
+		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_pCopyAllocator;
+		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5> m_pCopyCommandList;
+		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pCopyFence;
+		HANDLE m_CopyFenceEvent{ INVALID_HANDLE_VALUE };
+		UINT64 m_CopyFenceValue;
+		std::mutex m_CopyMutex;
+		std::vector<Graphics::buffer> m_copyBuffers;
+
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_pDsvHeap;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_pRtvHeap;
 		Microsoft::WRL::ComPtr<IDXGISwapChain4> m_pSwapChain;
 		Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[m_BackBufferCount];
 		Microsoft::WRL::ComPtr<ID3D12Resource1> m_pDepthStencilBuffer;
-		D3D12MemoryAllocation m_DSAlloc;
+		UniqueD3D12MemoryAllocation m_DSAlloc;
+
+		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_grs;
 		
 		D3D12_RECT m_ScissorRect;
 		D3D12_VIEWPORT m_ViewPort;
@@ -106,27 +113,25 @@ namespace sisskey
 			if (fullscreen)
 				m_pSwapChain->SetFullscreenState(FALSE, nullptr);
 			m_FlushCommandQueue();
+			if(m_CopyFenceEvent != INVALID_HANDLE_VALUE)
+				CloseHandle(m_CopyFenceEvent);
 		}
 
-		void Begin(/*clear value*/) final {}
-		void End() final {}
+		void Begin(/*clear value*/) final;
+		void End() final;
 
-		void BindPipeline(Graphics::handle pipeline) final {}
-		void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets) final {}
-		void BindViewports(const std::vector<Graphics::Viewport>& viewports) final {}
-		void BindScissorRects(const std::vector<Graphics::Rect>& scissors) final {}
-		void BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format) final {}
-		void Draw(std::uint32_t count, std::uint32_t start) final {}
-		void DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex) final {}
-
-		// These are test methods
-		void Render() final;
-		void Render(Graphics::handle pipeline, Graphics::buffer vertexBuffer) final {}
+		void BindPipeline(Graphics::PipelineHandle pipeline) final;
+		void BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>& strides) final;
+		void BindViewports(const std::vector<Graphics::Viewport>& viewports) final;
+		void BindScissorRects(const std::vector<Graphics::Rect>& scissors) final;
+		void BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format) final;
+		void Draw(std::uint32_t count, std::uint32_t start) final;
+		void DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex) final;
 
 		// TODO:
-		Graphics::handle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final { return Graphics::handle{}; }
-		void DestroyGraphicsPipeline(Graphics::handle pipeline) final {}
-		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final { return Graphics::buffer{}; }
-		void DestroyBuffer(Graphics::buffer buffer) final {}
+		Graphics::PipelineHandle CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc) final;
+		void DestroyGraphicsPipeline(Graphics::PipelineHandle pipeline) final;
+		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final;
+		void DestroyBuffer(Graphics::buffer buffer) final;
 	};
 }
