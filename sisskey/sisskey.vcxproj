@@ -68,6 +68,9 @@
       <AdditionalDependencies>vulkan-1.lib;d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)/Lib;</AdditionalLibraryDirectories>
     </Lib>
+    <FxCompile>
+      <ShaderModel>6.3</ShaderModel>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -91,6 +94,9 @@
       <AdditionalDependencies>vulkan-1.lib;d3d12.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)/Lib;</AdditionalLibraryDirectories>
     </Lib>
+    <FxCompile>
+      <ShaderModel>6.3</ShaderModel>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="D3D12MemAlloc.h" />

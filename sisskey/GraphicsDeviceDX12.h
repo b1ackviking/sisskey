@@ -79,8 +79,6 @@ namespace sisskey
 		Microsoft::WRL::ComPtr<ID3D12Resource1> m_pDepthStencilBuffer;
 		UniqueD3D12MemoryAllocation m_DSAlloc;
 
-		Microsoft::WRL::ComPtr<ID3D12RootSignature> m_grs;
-		
 		D3D12_RECT m_ScissorRect;
 		D3D12_VIEWPORT m_ViewPort;
 
@@ -133,5 +131,20 @@ namespace sisskey
 		void DestroyGraphicsPipeline(Graphics::PipelineHandle pipeline) final;
 		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final;
 		void DestroyBuffer(Graphics::buffer buffer) final;
+
+		Graphics::DescriptorSetLayout CreateDescriptorSetLayout(const std::vector<Graphics::DescriptorRange>& ranges, Graphics::SHADERSTAGE stage) final;
+		void DestroyDescriptorSetLayout(Graphics::DescriptorSetLayout layout) final;
+		Graphics::PipelineLayout CreatePipelineLayout(const std::vector<Graphics::DescriptorSetLayout>& descriptorLayouts) final;
+		void DestroyPipelineLayout(Graphics::PipelineLayout pl) final;
+		void BindPipelineLayout(Graphics::PipelineLayout pl) final;
+
+		Graphics::handle CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets) final;
+		void DestroyDescriptorHeap(Graphics::handle heap) final;
+		void BindDescriptorHeaps(const std::vector<Graphics::handle>& heaps) final;
+
+		void BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb) final;
+
+		std::vector<Graphics::DescriptorSet> CreateDescriptorSets(Graphics::handle heap, const std::vector<Graphics::DescriptorSetLayout>& layouts) final;
+		void BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout) final;
 	};
 }

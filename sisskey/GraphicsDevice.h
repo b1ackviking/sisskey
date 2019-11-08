@@ -66,6 +66,22 @@ namespace sisskey
 		virtual Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) = 0;
 		virtual void DestroyBuffer(Graphics::buffer buffer) = 0;
 
+		virtual Graphics::DescriptorSetLayout CreateDescriptorSetLayout(const std::vector<Graphics::DescriptorRange>& ranges, Graphics::SHADERSTAGE stage) = 0;
+		virtual void DestroyDescriptorSetLayout(Graphics::DescriptorSetLayout layout) = 0;
+		virtual Graphics::PipelineLayout CreatePipelineLayout(const std::vector<Graphics::DescriptorSetLayout>& descriptorLayouts) = 0;
+		virtual void DestroyPipelineLayout(Graphics::PipelineLayout pl) = 0;
+		// TODO: graphics/compute
+		virtual void BindPipelineLayout(Graphics::PipelineLayout pl) = 0;
+
+		virtual Graphics::handle CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets) = 0;
+		virtual void DestroyDescriptorHeap(Graphics::handle heap) = 0;
+		virtual void BindDescriptorHeaps(const std::vector<Graphics::handle>& heaps) = 0;
+
+		virtual void BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb) = 0;
+
+		virtual std::vector<Graphics::DescriptorSet> CreateDescriptorSets(Graphics::handle heap, const std::vector<Graphics::DescriptorSetLayout>& layouts) = 0;
+		virtual void BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout pl) = 0;
+
 		// TODO:
 		// virtual void BindStencilRef(std::uint32_t value, cmdlist index) = 0;
 

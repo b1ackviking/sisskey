@@ -2,6 +2,8 @@
 #include "../sisskey/Window.h"
 #include "../sisskey/GraphicsDevice.h"
 
+#include <DirectXMath.h>
+
 #include <string>
 #include <sstream>
 #include <vector>
@@ -120,6 +122,19 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	col.SemanticName = "COLOR";
 	col.Format = sisskey::Graphics::FORMAT::R32G32B32_FLOAT;
 	il.push_back(col);
+
+	struct ConstantBuffer
+	{
+		DirectX::XMMATRIX WVP;
+	};
+	ConstantBuffer cb;
+	cb.WVP = DirectX::XMMatrixIdentity() * DirectX::XMMatrixScaling(.5f, .5f, .5f) * DirectX::XMMatrixRotationZ(DirectX::XM_PIDIV4);
+	sisskey::Graphics::GPUBufferDesc cbd;
+	cbd.BindFlags = sisskey::Graphics::BIND_FLAG::CONSTANT_BUFFER;
+	cbd.ByteWidth = sizeof(ConstantBuffer);
+	sisskey::Graphics::SubresourceData cdata;
+	cdata.pSysMem = &cb;
+	sisskey::Graphics::buffer ConstBuf = gd->CreateBuffer(cbd, cdata);
 	
 	sisskey::Graphics::GraphicsPipelineDesc gpd;
 	//gpd.vs = sisskey::GraphicsDevice::LoadShader(std::filesystem::current_path() / "vert.spv");
@@ -137,6 +152,19 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	gpd.DSFormat = gd->GetDepthStencilFormat();
 	gpd.DepthStencilState = std::move(dss);
 
+	sisskey::Graphics::DescriptorRange range;
+	range.baseRegister = 0;
+	range.count = 1;
+	range.type = sisskey::Graphics::DESCRIPTOR_TYPE::CBV;
+
+	auto dsl = gd->CreateDescriptorSetLayout({ range }, sisskey::Graphics::SHADERSTAGE::VS);
+	auto heap = gd->CreateDescriptorHeap({ range }, 1);
+
+	auto ds = gd->CreateDescriptorSets(heap, { dsl });
+
+	auto pl = gd->CreatePipelineLayout({ dsl });
+	gpd.pl = pl;
+
 	auto p = gd->CreateGraphicsPipeline(gpd);
 
 	while (w->ProcessMessages() != sisskey::Window::PMResult::Quit)
@@ -145,18 +173,26 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 		sisskey::Graphics::Viewport vp{ .0f, .0f, static_cast<float>(width), static_cast<float>(height), .0f, 1.f };
 		sisskey::Graphics::Rect sr{ 0, 0, width, height };
 		gd->Begin();
+		gd->BindPipelineLayout(pl);
+		gd->BindPipeline(p);
+		gd->BindDescriptorHeaps({ heap });
+		gd->BindDescriptorSet(0, ds[0], pl);
 		gd->BindViewports({ vp });
 		gd->BindScissorRects({ sr });
-		gd->BindPipeline(p);
+		gd->BindConstantBuffer(0, 0, ds[0], ConstBuf);
 		gd->BindVertexBuffers(0, { vb }, { 0 }, { sizeof(Vertex) });
 		gd->BindIndexBuffer(ib, 0, sisskey::Graphics::INDEXBUFFER_FORMAT::UINT16);
 		gd->DrawIndexed(static_cast<std::uint32_t>(indices.size()), 0, 0);
 		gd->End();
 	}
 
+	gd->DestroyDescriptorHeap(heap);
+	gd->DestroyDescriptorSetLayout(dsl);
 	gd->DestroyGraphicsPipeline(p);
+	gd->DestroyPipelineLayout(pl);
 	gd->DestroyBuffer(ib);
 	gd->DestroyBuffer(vb);
+	gd->DestroyBuffer(ConstBuf);
 
 	return 0;
 }

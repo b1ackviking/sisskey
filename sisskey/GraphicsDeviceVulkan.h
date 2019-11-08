@@ -106,8 +106,6 @@ namespace sisskey
 
 		std::vector<vk::UniqueFramebuffer> m_fb;
 
-		vk::UniquePipelineLayout m_pl;
-
 		std::uint32_t m_currentBackBuffer;
 
 #ifndef NDEBUG
@@ -143,5 +141,20 @@ namespace sisskey
 
 		Graphics::buffer CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData) final;
 		void DestroyBuffer(Graphics::buffer buffer) final;
+
+		Graphics::DescriptorSetLayout CreateDescriptorSetLayout(const std::vector<Graphics::DescriptorRange>& ranges, Graphics::SHADERSTAGE stage) final;
+		void DestroyDescriptorSetLayout(Graphics::DescriptorSetLayout layout) final;
+		Graphics::PipelineLayout CreatePipelineLayout(const std::vector<Graphics::DescriptorSetLayout>& descriptorLayouts) final;
+		void DestroyPipelineLayout(Graphics::PipelineLayout pl) final;
+		void BindPipelineLayout(Graphics::PipelineLayout) final {}
+
+		Graphics::handle CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets) final;
+		void DestroyDescriptorHeap(Graphics::handle heap) final;
+		void BindDescriptorHeaps(const std::vector<Graphics::handle>&) final {}
+
+		void BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb) final;
+
+		std::vector<Graphics::DescriptorSet> CreateDescriptorSets(Graphics::handle heap, const std::vector<Graphics::DescriptorSetLayout>& layouts) final;
+		void BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout pl) final;
 	};
 }

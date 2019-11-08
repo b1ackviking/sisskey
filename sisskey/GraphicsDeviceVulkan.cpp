@@ -49,6 +49,36 @@ namespace sisskey
 
 	namespace Graphics
 	{
+		constexpr inline vk::ShaderStageFlags VK_ShaderStageFlags(SHADERSTAGE value)
+		{
+			switch (value)
+			{
+			case SHADERSTAGE::VS:	return vk::ShaderStageFlagBits::eVertex;
+			case SHADERSTAGE::HS:	return vk::ShaderStageFlagBits::eTessellationControl;
+			case SHADERSTAGE::DS:	return vk::ShaderStageFlagBits::eTessellationEvaluation;
+			case SHADERSTAGE::GS:	return vk::ShaderStageFlagBits::eGeometry;
+			case SHADERSTAGE::PS:	return vk::ShaderStageFlagBits::eFragment;
+			case SHADERSTAGE::CS:	return vk::ShaderStageFlagBits::eCompute;
+			default:				return vk::ShaderStageFlagBits::eAll;
+			}
+		}
+
+		constexpr inline vk::DescriptorType VK_DescriptorType(DESCRIPTOR_TYPE value)
+		{
+			switch (value)
+			{
+			case DESCRIPTOR_TYPE::CBV:					return vk::DescriptorType::eUniformBuffer;
+			case DESCRIPTOR_TYPE::SRV_TEXTURE:			return vk::DescriptorType::eSampledImage;
+			case DESCRIPTOR_TYPE::SRV_TYPEDBUFFER:		return vk::DescriptorType::eUniformTexelBuffer;
+			case DESCRIPTOR_TYPE::UAV_TEXTURE:			return vk::DescriptorType::eStorageImage;
+			case DESCRIPTOR_TYPE::UAV_TYPEDBUFFER:		return vk::DescriptorType::eStorageTexelBuffer;
+			case DESCRIPTOR_TYPE::SRV_UNTYPEDBUFFER:
+			case DESCRIPTOR_TYPE::UAV_UNTYPEDBUFFER:	return vk::DescriptorType::eStorageBuffer;
+			case DESCRIPTOR_TYPE::SAMPLER:				return vk::DescriptorType::eSampler;
+			default:									return vk::DescriptorType::eSampler;
+			}
+		}
+
 		constexpr inline vk::PrimitiveTopology VK_PrimitiveTopology(PRIMITIVE_TOPOLOGY value)
 		{
 			switch (value)
@@ -810,8 +840,6 @@ namespace sisskey
 		m_CreateRenderPass();
 		m_CreateFrameBuffers();
 
-		m_pl = m_device->createPipelineLayoutUnique({});
-
 		m_fence = m_device->createFenceUnique({});
 		m_device->resetFences(m_fence.get());
 
@@ -1207,7 +1235,7 @@ namespace sisskey
 		vk::PipelineDynamicStateCreateInfo dsi{ {}, static_cast<std::uint32_t>(ds.size()), ds.data() };
 
 		// TODO: pipeline layout
-		vk::GraphicsPipelineCreateInfo pci{ {}, static_cast<std::uint32_t>(ShaderStages.size()), ShaderStages.data(), &visi, &iasi, &tsi, &vpsi, &rsi, &msi, &dssi, &colorBlending, &dsi, m_pl.get(), renderPass.get() };
+		vk::GraphicsPipelineCreateInfo pci{ {}, static_cast<std::uint32_t>(ShaderStages.size()), ShaderStages.data(),& visi,& iasi,& tsi,& vpsi,& rsi,& msi,& dssi,& colorBlending,& dsi, { reinterpret_cast<VkPipelineLayout>(desc.pl) }, renderPass.get() };
 
 		vk::PipelineCacheCreateInfo pcci{};
 		vk::UniquePipelineCache pc = m_device->createPipelineCacheUnique(pcci);
@@ -1314,5 +1342,108 @@ namespace sisskey
 	{
 		m_device->waitIdle();
 		vmaDestroyBuffer(m_vma, reinterpret_cast<VkBuffer>(buffer.resource), reinterpret_cast<VmaAllocation>(buffer.allocation));
+	}
+	
+	Graphics::DescriptorSetLayout sisskey::GraphicsDeviceVulkan::CreateDescriptorSetLayout(const std::vector<Graphics::DescriptorRange>& ranges, Graphics::SHADERSTAGE stage)
+	{
+		std::vector<vk::DescriptorSetLayoutBinding> bindings(ranges.size());
+		std::transform(ranges.begin(), ranges.end(), bindings.begin(),
+					   [stage](const Graphics::DescriptorRange& r)
+					   {
+						   return vk::DescriptorSetLayoutBinding{ r.baseRegister, Graphics::VK_DescriptorType(r.type), r.count, Graphics::VK_ShaderStageFlags(stage) };
+					   });
+
+		vk::DescriptorSetLayoutCreateInfo info{ {}, static_cast<std::uint32_t>(bindings.size()), bindings.data() };
+
+		auto l = m_device->createDescriptorSetLayout(info);
+		auto ret = static_cast<VkDescriptorSetLayout>(l);
+
+		return reinterpret_cast<Graphics::DescriptorSetLayout>(ret);
+	}
+
+	void sisskey::GraphicsDeviceVulkan::DestroyDescriptorSetLayout(Graphics::DescriptorSetLayout layout)
+	{
+		m_device->destroyDescriptorSetLayout({ reinterpret_cast<VkDescriptorSetLayout>(layout) });
+	}
+	
+	Graphics::PipelineLayout sisskey::GraphicsDeviceVulkan::CreatePipelineLayout(const std::vector<Graphics::DescriptorSetLayout>& descriptorLayouts)
+	{
+		std::vector<vk::DescriptorSetLayout> l(descriptorLayouts.size());
+		std::transform(descriptorLayouts.begin(), descriptorLayouts.end(), l.begin(),
+					   [](Graphics::DescriptorSetLayout layout)
+					   {
+						   return vk::DescriptorSetLayout{ reinterpret_cast<VkDescriptorSetLayout>(layout) };
+					   });
+
+		vk::PipelineLayoutCreateInfo info{ {}, static_cast<std::uint32_t>(l.size()), l.data() };
+
+		auto pl = m_device->createPipelineLayout(info);
+		auto ret = static_cast<VkPipelineLayout>(pl);
+		return reinterpret_cast<Graphics::PipelineLayout>(ret);
+	}
+	
+	void sisskey::GraphicsDeviceVulkan::DestroyPipelineLayout(Graphics::PipelineLayout pl)
+	{
+		m_device->destroyPipelineLayout(reinterpret_cast<VkPipelineLayout>(pl));
+	}
+	
+	Graphics::handle sisskey::GraphicsDeviceVulkan::CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets)
+	{
+		std::vector<vk::DescriptorPoolSize> sizes(ranges.size());
+		std::transform(ranges.begin(), ranges.end(), sizes.begin(),
+					   [](const Graphics::DescriptorRange& r)
+					   {
+						   return vk::DescriptorPoolSize{ Graphics::VK_DescriptorType(r.type), r.count };
+					   });
+		vk::DescriptorPoolCreateInfo info{ {}, maxSets, static_cast<std::uint32_t>(sizes.size()), sizes.data() };
+		auto pool = m_device->createDescriptorPool(info);
+		auto ret = static_cast<VkDescriptorPool>(pool);
+		return reinterpret_cast<Graphics::handle>(ret);
+	}
+	
+	void sisskey::GraphicsDeviceVulkan::DestroyDescriptorHeap(Graphics::handle heap)
+	{
+		m_device->waitIdle();
+		m_device->destroyDescriptorPool({ reinterpret_cast<VkDescriptorPool>(heap) });
+	}
+	
+	void sisskey::GraphicsDeviceVulkan::BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb)
+	{
+		// TODO: broken
+		vk::DescriptorBufferInfo dbi{ { reinterpret_cast<VkBuffer>(cb.resource) }, 0, VK_WHOLE_SIZE };
+
+		vk::WriteDescriptorSet write{ { reinterpret_cast<VkDescriptorSet>(set.cpu) }, 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &dbi };
+
+		m_device->updateDescriptorSets(write, {});
+	}
+
+	std::vector<Graphics::DescriptorSet> sisskey::GraphicsDeviceVulkan::CreateDescriptorSets(Graphics::handle heap, const std::vector<Graphics::DescriptorSetLayout>& layouts)
+	{
+		std::vector<vk::DescriptorSetLayout> l(layouts.size());
+		std::transform(layouts.begin(), layouts.end(), l.begin(),
+					   [](const Graphics::DescriptorSetLayout& layout)
+					   {
+						   return vk::DescriptorSetLayout{ reinterpret_cast<VkDescriptorSetLayout>(layout) };
+					   });
+
+		vk::DescriptorSetAllocateInfo info{ { reinterpret_cast<VkDescriptorPool>(heap) }, static_cast<std::uint32_t>(l.size()), l.data() };
+		auto res = m_device->allocateDescriptorSets(info);
+
+		std::vector<Graphics::DescriptorSet> ret(res.size());
+		std::transform(res.begin(), res.end(), ret.begin(),
+					   [](const vk::DescriptorSet& ds) -> Graphics::DescriptorSet
+					   {
+						   auto set = static_cast<VkDescriptorSet>(ds);
+						   return { reinterpret_cast<Graphics::handle>(set), 0 };
+					   });
+
+		return ret;
+	}
+	
+	void sisskey::GraphicsDeviceVulkan::BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout pl)
+	{
+		auto layout = vk::PipelineLayout{ reinterpret_cast<VkPipelineLayout>(pl) };
+		auto set = vk::DescriptorSet{ reinterpret_cast<VkDescriptorSet>(ds.cpu) };
+		m_cmd[0]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, layout, 0, set, {});
 	}
 }

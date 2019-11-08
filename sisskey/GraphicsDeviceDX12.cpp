@@ -17,11 +17,43 @@
 #include <array>
 #include <string>
 #include <cassert>
+#include <numeric>
 
 namespace sisskey
 {
 	namespace Graphics
 	{
+		// TODO: multiple stages
+		constexpr inline D3D12_SHADER_VISIBILITY DX12_ShaderVisibility(SHADERSTAGE value)
+		{
+			switch (value)
+			{
+			case SHADERSTAGE::VS:	return D3D12_SHADER_VISIBILITY_VERTEX;
+			case SHADERSTAGE::HS:	return D3D12_SHADER_VISIBILITY_HULL;
+			case SHADERSTAGE::DS:	return D3D12_SHADER_VISIBILITY_DOMAIN;
+			case SHADERSTAGE::GS:	return D3D12_SHADER_VISIBILITY_GEOMETRY;
+			case SHADERSTAGE::PS:	return D3D12_SHADER_VISIBILITY_PIXEL;
+			case SHADERSTAGE::CS:	return D3D12_SHADER_VISIBILITY_ALL;
+			default:				return D3D12_SHADER_VISIBILITY_ALL;
+			}
+		}
+
+		constexpr inline D3D12_DESCRIPTOR_RANGE_TYPE DX12_DescriptorRangeType(DESCRIPTOR_TYPE value)
+		{
+			switch (value)
+			{
+			case DESCRIPTOR_TYPE::CBV:					return D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+			case DESCRIPTOR_TYPE::SRV_TEXTURE:
+			case DESCRIPTOR_TYPE::SRV_TYPEDBUFFER:
+			case DESCRIPTOR_TYPE::SRV_UNTYPEDBUFFER:	return D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+			case DESCRIPTOR_TYPE::UAV_TEXTURE:
+			case DESCRIPTOR_TYPE::UAV_TYPEDBUFFER:
+			case DESCRIPTOR_TYPE::UAV_UNTYPEDBUFFER:	return D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+			case DESCRIPTOR_TYPE::SAMPLER:				return D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+			default:									return D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+			}
+		}
+
 		constexpr inline D3D12_PRIMITIVE_TOPOLOGY_TYPE DX12_PrimitiveTopologyType(PRIMITIVE_TOPOLOGY value)
 		{
 			switch (value)
@@ -692,15 +724,6 @@ namespace sisskey
 		ID3D12CommandList* cmdsLists[] = { m_pCommandList.Get() };
 		m_pCommandQueue->ExecuteCommandLists(1, cmdsLists);
 		m_FlushCommandQueue();
-
-		// TODO
-		D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
-		rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-		Microsoft::WRL::ComPtr<ID3DBlob> rootSigBlob;
-		Microsoft::WRL::ComPtr<ID3DBlob> rootSigError;
-		ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &rootSigBlob, &rootSigError));
-		ThrowIfFailed(m_pDevice->CreateRootSignature(0, rootSigBlob->GetBufferPointer(), rootSigBlob->GetBufferSize(), IID_PPV_ARGS(&m_grs)));
 	}
 
 	void GraphicsDeviceDX12::Begin()
@@ -719,9 +742,6 @@ namespace sisskey
 		m_pCommandList->ClearDepthStencilView(m_DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 		// Specify the buffers we are going to render to.
 		m_pCommandList->OMSetRenderTargets(1, &m_CurrentBackBufferView(), true, &m_DepthStencilView());
-
-		// TODO
-		m_pCommandList->SetGraphicsRootSignature(m_grs.Get());
 	}
 
 	void GraphicsDeviceDX12::End()
@@ -958,8 +978,7 @@ namespace sisskey
 		// ??
 		psd.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 
-		// TODO
-		psd.pRootSignature = m_grs.Get();
+		psd.pRootSignature = reinterpret_cast<ID3D12RootSignature*>(desc.pl);
 
 		ID3D12PipelineState* pso;
 		ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psd, IID_PPV_ARGS(&pso)));
@@ -1027,6 +1046,116 @@ namespace sisskey
 		// TODO gpu sync
 		reinterpret_cast<ID3D12Resource*>(buffer.resource)->Release();
 		reinterpret_cast<D3D12MA::Allocation*>(buffer.allocation)->Release();
+	}
+
+	Graphics::DescriptorSetLayout GraphicsDeviceDX12::CreateDescriptorSetLayout(const std::vector<Graphics::DescriptorRange>& ranges, Graphics::SHADERSTAGE stage)
+	{
+		D3D12_DESCRIPTOR_RANGE* r = new D3D12_DESCRIPTOR_RANGE[ranges.size()];
+		std::transform(ranges.begin(), ranges.end(), r,
+					   [](const Graphics::DescriptorRange& range) -> D3D12_DESCRIPTOR_RANGE
+					   {
+						   return CD3DX12_DESCRIPTOR_RANGE(Graphics::DX12_DescriptorRangeType(range.type), range.count, range.baseRegister);
+					   });
+
+		D3D12_ROOT_PARAMETER* ret = new D3D12_ROOT_PARAMETER;
+		ret->ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		ret->DescriptorTable.NumDescriptorRanges = static_cast<UINT>(ranges.size());
+		ret->DescriptorTable.pDescriptorRanges = r;
+		ret->ShaderVisibility = Graphics::DX12_ShaderVisibility(stage);
+
+		return reinterpret_cast<Graphics::DescriptorSetLayout>(ret);
+	}
+
+	void GraphicsDeviceDX12::DestroyDescriptorSetLayout(Graphics::DescriptorSetLayout layout)
+	{
+		D3D12_ROOT_PARAMETER* p = reinterpret_cast<D3D12_ROOT_PARAMETER*>(layout);
+		delete[] p->DescriptorTable.pDescriptorRanges;
+		delete p;
+	}
+
+	Graphics::PipelineLayout GraphicsDeviceDX12::CreatePipelineLayout(const std::vector<Graphics::DescriptorSetLayout>& descriptorLayouts)
+	{
+		std::vector<D3D12_ROOT_PARAMETER> params(descriptorLayouts.size());
+		std::transform(descriptorLayouts.begin(), descriptorLayouts.end(), params.begin(), [](Graphics::DescriptorSetLayout p) { return *reinterpret_cast<D3D12_ROOT_PARAMETER*>(p); });
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(static_cast<UINT>(params.size()), params.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Microsoft::WRL::ComPtr<ID3DBlob> serializedRootSig;
+		Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
+		ID3D12RootSignature* rootSig;
+		ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
+		ThrowIfFailed(m_pDevice->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&rootSig)));
+
+		return reinterpret_cast<Graphics::PipelineLayout>(rootSig);
+	}
+
+	void GraphicsDeviceDX12::DestroyPipelineLayout(Graphics::PipelineLayout pl)
+	{
+		reinterpret_cast<ID3D12RootSignature*>(pl)->Release();
+	}
+
+	void GraphicsDeviceDX12::BindPipelineLayout(Graphics::PipelineLayout pl)
+	{
+		m_pCommandList->SetGraphicsRootSignature(reinterpret_cast<ID3D12RootSignature*>(pl));
+	}
+
+	Graphics::handle GraphicsDeviceDX12::CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets)
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC desc{};
+		desc.NumDescriptors = std::accumulate(ranges.begin(), ranges.end(), 0, [](auto& val, const Graphics::DescriptorRange& cur) { return val += cur.count; }); // * maxSets ??
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		ID3D12DescriptorHeap* heap;
+		ThrowIfFailed(m_pDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
+
+		return reinterpret_cast<Graphics::handle>(heap);
+	}
+
+	void GraphicsDeviceDX12::DestroyDescriptorHeap(Graphics::handle heap)
+	{
+		reinterpret_cast<ID3D12DescriptorHeap*>(heap)->Release();
+	}
+
+	void GraphicsDeviceDX12::BindDescriptorHeaps(const std::vector<Graphics::handle>& heaps)
+	{
+		m_pCommandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), reinterpret_cast<ID3D12DescriptorHeap* const*>(heaps.data()));
+	}
+
+	void GraphicsDeviceDX12::BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb)
+	{
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvd;
+		cbvd.BufferLocation = reinterpret_cast<ID3D12Resource*>(cb.resource)->GetGPUVirtualAddress();
+		cbvd.SizeInBytes = 256;// static_cast<UINT>(reinterpret_cast<D3D12MA::Allocation*>(cb.allocation)->GetSize());
+
+		// TODO: broken
+		m_pDevice->CreateConstantBufferView(&cbvd, { set.cpu });
+	}
+
+	std::vector<Graphics::DescriptorSet> GraphicsDeviceDX12::CreateDescriptorSets(Graphics::handle heap, const std::vector<Graphics::DescriptorSetLayout>& layouts)
+	{
+		std::vector<Graphics::DescriptorSet> ret(layouts.size());
+
+		auto h = reinterpret_cast<ID3D12DescriptorHeap*>(heap);
+
+		auto cpu_start = h->GetCPUDescriptorHandleForHeapStart();
+		auto gpu_start = h->GetGPUDescriptorHandleForHeapStart();
+		for (size_t i{}; i < layouts.size(); ++i)
+		{
+			ret[i] = { cpu_start.ptr, gpu_start.ptr };
+			size_t tableOffset = 0;
+			auto* p = reinterpret_cast<D3D12_ROOT_PARAMETER*>(layouts[i]);
+			for (UINT j{}; j < p->DescriptorTable.NumDescriptorRanges; ++j)
+				tableOffset += p->DescriptorTable.pDescriptorRanges[j].NumDescriptors;
+			cpu_start.ptr += m_CbvSrvDescriptorSize * tableOffset;
+			gpu_start.ptr += m_CbvSrvDescriptorSize * tableOffset; // should work ...
+		}
+
+		return ret;
+	}
+
+	void GraphicsDeviceDX12::BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout)
+	{
+		m_pCommandList->SetGraphicsRootDescriptorTable(index, D3D12_GPU_DESCRIPTOR_HANDLE{ ds.gpu });
 	}
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GraphicsDeviceDX12::m_CurrentBackBufferView() const

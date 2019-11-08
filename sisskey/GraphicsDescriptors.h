@@ -37,6 +37,17 @@ namespace sisskey::Graphics
 
 	struct Texture;
 
+	enum class DESCRIPTOR_TYPE
+	{
+		CBV,
+		SRV_TEXTURE,
+		SRV_TYPEDBUFFER,
+		SRV_UNTYPEDBUFFER,
+		UAV_TEXTURE,
+		UAV_TYPEDBUFFER,
+		UAV_UNTYPEDBUFFER,
+		SAMPLER,
+	};
 	enum class SHADERSTAGE
 	{
 		VS,
@@ -350,6 +361,21 @@ namespace sisskey::Graphics
 	using handle = std::uintptr_t;
 	static_assert(sizeof(void*) == sizeof(handle));
 
+	struct DescriptorRange
+	{
+		DESCRIPTOR_TYPE type;
+		unsigned int count;
+		unsigned int baseRegister;
+	};
+
+	using DescriptorSetLayout = handle;
+	using PipelineLayout = handle;
+	struct DescriptorSet
+	{
+		handle cpu{};
+		handle gpu{};
+	};
+
 	struct PipelineHandle
 	{
 		handle ph;
@@ -499,6 +525,7 @@ namespace sisskey::Graphics
 		std::optional<RasterizerStateDesc> RasterizerState;
 		std::optional<DepthStencilStateDesc> DepthStencilState;
 		std::optional<VertexLayout> InputLayout;
+		PipelineLayout pl{};
 		PRIMITIVE_TOPOLOGY pt{ PRIMITIVE_TOPOLOGY::TRIANGLELIST };
 		unsigned int numRTs{};
 		std::array<FORMAT, 8> RTFormats{};
