@@ -598,7 +598,7 @@ namespace sisskey
 		{
 			Microsoft::WRL::ComPtr<ID3D12Fence> f;
 			ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&f)));
-			ThrowIfFailed(f.As(&m_pFence));
+			ThrowIfFailed(f.As(&m_pFrameFence));
 		}
 
 		// Store increments
@@ -616,18 +616,14 @@ namespace sisskey
 		m_4xMsaaQuality = msQualityLevels.NumQualityLevels;
 		assert(m_4xMsaaQuality > 0 && "Unexpected MSAA quality level.");
 		
-		// Create DirectCommandQueue, CommandAllocator and GraphicsCommandList
+		// Create DirectCommandQueue
 		D3D12_COMMAND_QUEUE_DESC queueDesc{};
 		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 		ThrowIfFailed(m_pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_pCommandQueue)));
-		ThrowIfFailed(m_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_pDirectCmdListAlloc)));
-		{
-			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cl;
-			ThrowIfFailed(m_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pDirectCmdListAlloc.Get(), // Associated command allocator
-													   nullptr, // Initial PipelineStateObject
-													   IID_PPV_ARGS(&cl)));
-			ThrowIfFailed(cl.As(&m_pCommandList));
-		}
+
+		// Create FrameResources
+		for (int i{}; i < m_BackBufferCount; ++i)
+			m_frames.emplace_back(m_pDevice.Get());
 
 		// Create CopyQueue, CopyCommandAllocator and CopyCommandList
 		D3D12_COMMAND_QUEUE_DESC copyQueueDesc{};
@@ -646,7 +642,7 @@ namespace sisskey
 			ThrowIfFailed(m_pCopyCommandList->Reset(m_pCopyAllocator.Get(), nullptr));
 
 			ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pCopyFence)));
-			m_CopyFenceEvent = CreateEventExW(NULL, FALSE, FALSE, EVENT_ALL_ACCESS);
+			m_CopyFenceEvent = UniqueHandle{ CreateEventExW(NULL, FALSE, FALSE, EVENT_ALL_ACCESS) };
 			m_CopyFenceValue = 1;
 		}
 
@@ -704,54 +700,53 @@ namespace sisskey
 		// Create descriptor to mip level 0 of entire resource using the
 		// format of the resource.
 		m_pDevice->CreateDepthStencilView(m_pDepthStencilBuffer.Get(), nullptr, m_DepthStencilView());
+
 		// Transition the resource from its initial state to be used as a depth buffer.
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_pDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
-
-		// Set ViewPort and Scissors
-		m_ViewPort.TopLeftX = 0.0f;
-		m_ViewPort.TopLeftY = 0.0f;
-		m_ViewPort.Width = static_cast<float>(m_Width);
-		m_ViewPort.Height = static_cast<float>(m_Height);
-		m_ViewPort.MinDepth = 0.0f;
-		m_ViewPort.MaxDepth = 1.0f;
-		m_pCommandList->RSSetViewports(1, &m_ViewPort);
-
-		m_ScissorRect = { 0, 0, m_Width / 2, m_Height / 2 };
-		m_pCommandList->RSSetScissorRects(1, &m_ScissorRect);
+		auto& fr = m_frames[0];
+		ThrowIfFailed(fr.CommandAllocator->Reset());
+		ThrowIfFailed(fr.CommandList->Reset(m_frames[0].CommandAllocator.Get(), nullptr));
+		fr.CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_pDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+		fr.FenceValue = 1;
 
 		// Commit initialization commands
-		ThrowIfFailed(m_pCommandList->Close());
-		ID3D12CommandList* cmdsLists[] = { m_pCommandList.Get() };
+		ThrowIfFailed(fr.CommandList->Close());
+		ID3D12CommandList* cmdsLists[] = { fr.CommandList.Get() };
 		m_pCommandQueue->ExecuteCommandLists(1, cmdsLists);
 		m_FlushCommandQueue();
 	}
 
 	void GraphicsDeviceDX12::Begin()
 	{
-		// Reuse the memory associated with command recording.
-		// We can only reset when the associated command lists have finished
-		// execution on the GPU.
-		ThrowIfFailed(m_pDirectCmdListAlloc->Reset());
-		// A command list can be reset after it has been added to the 
-		// command queue via ExecuteCommandList. Reusing the command list reuses memory.
-		ThrowIfFailed(m_pCommandList->Reset(m_pDirectCmdListAlloc.Get(), nullptr));
+		auto& fr = m_frames[++frameIndex % m_BackBufferCount];
+		if (m_pFrameFence->GetCompletedValue() < fr.FenceValue)
+		{
+			ThrowIfFailed(m_pFrameFence->SetEventOnCompletion(m_CurrentFence, fr.FenceEvent.get()));
+			// Wait until the GPU hits current fence event is fired.
+			WaitForSingleObject(fr.FenceEvent.get(), INFINITE);
+		}
+
+		ThrowIfFailed(fr.CommandAllocator->Reset());
+		ThrowIfFailed(fr.CommandList->Reset(fr.CommandAllocator.Get(), nullptr));
+
 		// Indicate a state transition on the resource usage.
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+		fr.CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 		// Clear the back buffer and depth buffer.
-		m_pCommandList->ClearRenderTargetView(m_CurrentBackBufferView(), DirectX::Colors::LightSteelBlue, 0, nullptr);
-		m_pCommandList->ClearDepthStencilView(m_DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+		fr.CommandList->ClearRenderTargetView(m_CurrentBackBufferView(), DirectX::Colors::LightSteelBlue, 0, nullptr);
+		fr.CommandList->ClearDepthStencilView(m_DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 		// Specify the buffers we are going to render to.
-		m_pCommandList->OMSetRenderTargets(1, &m_CurrentBackBufferView(), true, &m_DepthStencilView());
+		fr.CommandList->OMSetRenderTargets(1, &m_CurrentBackBufferView(), true, &m_DepthStencilView());
 	}
 
 	void GraphicsDeviceDX12::End()
 	{
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+
 		// Indicate a state transition on the resource usage.
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+		fr.CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 		{
 			std::lock_guard l{ m_CopyMutex };
-			m_pCopyCommandList->Close();
+			ThrowIfFailed(m_pCopyCommandList->Close());
 			ID3D12CommandList* cmdsLists[] = { m_pCopyCommandList.Get() };
 			m_pCopyQueue->ExecuteCommandLists(1, cmdsLists);
 
@@ -762,8 +757,8 @@ namespace sisskey
 			// Wait until the GPU is done copying.
 			if (m_pCopyFence->GetCompletedValue() < fenceToWaitFor)
 			{
-				ThrowIfFailed(m_pCopyFence->SetEventOnCompletion(fenceToWaitFor, m_CopyFenceEvent));
-				WaitForSingleObject(m_CopyFenceEvent, INFINITE);
+				ThrowIfFailed(m_pCopyFence->SetEventOnCompletion(fenceToWaitFor, m_CopyFenceEvent.get()));
+				WaitForSingleObject(m_CopyFenceEvent.get(), INFINITE);
 			}
 
 			ThrowIfFailed(m_pCopyAllocator->Reset());
@@ -779,9 +774,9 @@ namespace sisskey
 		}
 
 		// Done recording commands.
-		ThrowIfFailed(m_pCommandList->Close());
+		ThrowIfFailed(fr.CommandList->Close());
 		// Add the command list to the queue for execution.
-		ID3D12CommandList* cmdsLists[] = { m_pCommandList.Get() };
+		ID3D12CommandList* cmdsLists[] = { fr.CommandList.Get() };
 		m_pCommandQueue->ExecuteCommandLists(1, cmdsLists);
 
 		// swap the back and front buffers
@@ -790,16 +785,16 @@ namespace sisskey
 		UINT Flags{ !m_VSync && m_TearingSupport && m_PresentMode != PresentMode::Fullscreen ? DXGI_PRESENT_ALLOW_TEARING : 0u }; // Note: VFR is not allowed in fullscreen mode
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present
 		ThrowIfFailed(m_pSwapChain->Present(SyncInterval, Flags));
-		// Wait until frame commands are complete. This waiting is
-		// inefficient and is done for simplicity. Later we will show how to
-		// organize our rendering code so we do not have to wait per frame.
-		m_FlushCommandQueue();
+
+		fr.FenceValue = ++m_CurrentFence;
+		ThrowIfFailed(m_pCommandQueue->Signal(m_pFrameFence.Get(), m_CurrentFence));
 	}
 
 	void GraphicsDeviceDX12::BindPipeline(Graphics::PipelineHandle pipeline)
 	{
-		m_pCommandList->SetPipelineState(reinterpret_cast<ID3D12PipelineState*>(pipeline.ph));
-		m_pCommandList->IASetPrimitiveTopology(Graphics::DX12_PrimitiveTopology(pipeline.pt));
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->SetPipelineState(reinterpret_cast<ID3D12PipelineState*>(pipeline.ph));
+		fr.CommandList->IASetPrimitiveTopology(Graphics::DX12_PrimitiveTopology(pipeline.pt));
 	}
 
 	void GraphicsDeviceDX12::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>& strides)
@@ -815,7 +810,8 @@ namespace sisskey
 					strides[i] };
 		}
 
-		m_pCommandList->IASetVertexBuffers(start, static_cast<UINT>(vb.size()), vb.data());
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->IASetVertexBuffers(start, static_cast<UINT>(vb.size()), vb.data());
 	}
 
 	void GraphicsDeviceDX12::BindViewports(const std::vector<Graphics::Viewport>& viewports)
@@ -826,7 +822,9 @@ namespace sisskey
 					   {
 						   return { v.TopLeftX, v.TopLeftY, v.Width, v.Height, v.MinDepth, v.MaxDepth };
 					   });
-		m_pCommandList->RSSetViewports(static_cast<UINT>(vp.size()), vp.data());
+
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->RSSetViewports(static_cast<UINT>(vp.size()), vp.data());
 	}
 
 	void GraphicsDeviceDX12::BindScissorRects(const std::vector<Graphics::Rect>& scissors)
@@ -839,7 +837,9 @@ namespace sisskey
 						   assert(r.bottom >= r.top);
 						   return { r.left, r.top, r.right, r.bottom };
 					   });
-		m_pCommandList->RSSetScissorRects(static_cast<UINT>(rc.size()), rc.data());
+
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->RSSetScissorRects(static_cast<UINT>(rc.size()), rc.data());
 	}
 
 	void GraphicsDeviceDX12::BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format)
@@ -848,17 +848,21 @@ namespace sisskey
 		ibv.BufferLocation = reinterpret_cast<ID3D12Resource*>(indexBuffer.resource)->GetGPUVirtualAddress() + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(offsest);
 		ibv.Format = format == Graphics::INDEXBUFFER_FORMAT::UINT16 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 		ibv.SizeInBytes = static_cast<UINT>(reinterpret_cast<D3D12MA::Allocation*>(indexBuffer.allocation)->GetSize() - offsest); // ??
-		m_pCommandList->IASetIndexBuffer(&ibv);
+
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->IASetIndexBuffer(&ibv);
 	}
 
 	void GraphicsDeviceDX12::Draw(std::uint32_t count, std::uint32_t start)
 	{
-		m_pCommandList->DrawInstanced(count, 1, start, 0);
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->DrawInstanced(count, 1, start, 0);
 	}
 
 	void GraphicsDeviceDX12::DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex)
 	{
-		m_pCommandList->DrawIndexedInstanced(count, 1, startIndex, startVertex, 0);
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->DrawIndexedInstanced(count, 1, startIndex, startVertex, 0);
 	}
 
 	Graphics::PipelineHandle GraphicsDeviceDX12::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
@@ -1096,7 +1100,8 @@ namespace sisskey
 
 	void GraphicsDeviceDX12::BindPipelineLayout(Graphics::PipelineLayout pl)
 	{
-		m_pCommandList->SetGraphicsRootSignature(reinterpret_cast<ID3D12RootSignature*>(pl));
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->SetGraphicsRootSignature(reinterpret_cast<ID3D12RootSignature*>(pl));
 	}
 
 	Graphics::handle GraphicsDeviceDX12::CreateDescriptorHeap(const std::vector<Graphics::DescriptorRange>& ranges, std::uint32_t maxSets)
@@ -1113,12 +1118,14 @@ namespace sisskey
 
 	void GraphicsDeviceDX12::DestroyDescriptorHeap(Graphics::handle heap)
 	{
+		m_FlushCommandQueue();
 		reinterpret_cast<ID3D12DescriptorHeap*>(heap)->Release();
 	}
 
 	void GraphicsDeviceDX12::BindDescriptorHeaps(const std::vector<Graphics::handle>& heaps)
 	{
-		m_pCommandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), reinterpret_cast<ID3D12DescriptorHeap* const*>(heaps.data()));
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), reinterpret_cast<ID3D12DescriptorHeap* const*>(heaps.data()));
 	}
 
 	void GraphicsDeviceDX12::BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb)
@@ -1155,7 +1162,8 @@ namespace sisskey
 
 	void GraphicsDeviceDX12::BindDescriptorSet(std::uint32_t index, Graphics::DescriptorSet ds, Graphics::PipelineLayout)
 	{
-		m_pCommandList->SetGraphicsRootDescriptorTable(index, D3D12_GPU_DESCRIPTOR_HANDLE{ ds.gpu });
+		auto& fr = m_frames[frameIndex % m_BackBufferCount];
+		fr.CommandList->SetGraphicsRootDescriptorTable(index, D3D12_GPU_DESCRIPTOR_HANDLE{ ds.gpu });
 	}
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GraphicsDeviceDX12::m_CurrentBackBufferView() const
@@ -1174,14 +1182,14 @@ namespace sisskey
 		// Because we are on the GPU timeline, the new fence point won’t be
 		// set until the GPU finishes processing all the commands prior to
 		// this Signal().
-		ThrowIfFailed(m_pCommandQueue->Signal(m_pFence.Get(), m_CurrentFence));
+		ThrowIfFailed(m_pCommandQueue->Signal(m_pFrameFence.Get(), m_CurrentFence));
 		// Wait until the GPU has completed commands up to this fence point.
-		if (m_pFence->GetCompletedValue() < m_CurrentFence)
+		if (m_pFrameFence->GetCompletedValue() < m_CurrentFence)
 		{
 			if (HANDLE eventHandle = CreateEventExW(nullptr, false, false, EVENT_ALL_ACCESS); eventHandle)
 			{
 				// Fire event when GPU hits current fence. 
-				ThrowIfFailed(m_pFence->SetEventOnCompletion(m_CurrentFence, eventHandle));
+				ThrowIfFailed(m_pFrameFence->SetEventOnCompletion(m_CurrentFence, eventHandle));
 				// Wait until the GPU hits current fence event is fired.
 				WaitForSingleObject(eventHandle, INFINITE);
 				CloseHandle(eventHandle);

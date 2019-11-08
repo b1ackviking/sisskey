@@ -52,22 +52,23 @@ namespace sisskey
 		Microsoft::WRL::ComPtr<IDXGIFactory7> m_pFactory;
 		Microsoft::WRL::ComPtr<ID3D12Device6> m_pDevice;
 
+		struct HandleDeleter { void operator()(HANDLE h) { CloseHandle(h); } };
+		using UniqueHandle = std::unique_ptr<std::remove_pointer_t<HANDLE>, HandleDeleter>;
+
 		struct ReleaseDeleter { template<typename T> void operator()(T* t) const { t->Release(); } };
 		using UniqueD3D12MemoryAllocation = std::unique_ptr<D3D12MA::Allocation, ReleaseDeleter>;
 		using UniqueD3D12MemoryAllocator = std::unique_ptr<D3D12MA::Allocator, ReleaseDeleter>;
 
 		UniqueD3D12MemoryAllocator m_d3dma;
 
-		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pFence;
+		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pFrameFence;
 		Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_pCommandQueue;
-		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_pDirectCmdListAlloc;
-		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5> m_pCommandList;
 
 		Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_pCopyQueue;
 		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_pCopyAllocator;
 		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5> m_pCopyCommandList;
 		Microsoft::WRL::ComPtr<ID3D12Fence1> m_pCopyFence;
-		HANDLE m_CopyFenceEvent{ INVALID_HANDLE_VALUE };
+		UniqueHandle m_CopyFenceEvent;
 		UINT64 m_CopyFenceValue;
 		std::mutex m_CopyMutex;
 		std::vector<Graphics::buffer> m_copyBuffers;
@@ -79,8 +80,32 @@ namespace sisskey
 		Microsoft::WRL::ComPtr<ID3D12Resource1> m_pDepthStencilBuffer;
 		UniqueD3D12MemoryAllocation m_DSAlloc;
 
-		D3D12_RECT m_ScissorRect;
-		D3D12_VIEWPORT m_ViewPort;
+		struct FrameResources
+		{
+			FrameResources(ID3D12Device6* device)
+			{
+				ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&CommandAllocator)));
+				{
+					Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cl;
+					ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, CommandAllocator.Get(), // Associated command allocator
+															   nullptr, // Initial PipelineStateObject
+															   IID_PPV_ARGS(&cl)));
+					ThrowIfFailed(cl.As(&CommandList));
+				}
+
+				ThrowIfFailed(CommandList->Close());
+
+				FenceEvent = UniqueHandle{ CreateEventExW(NULL, FALSE, FALSE, EVENT_ALL_ACCESS) };
+				FenceValue = 0;
+			}
+
+			Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CommandAllocator;
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5> CommandList;
+			UniqueHandle FenceEvent;
+			UINT64 FenceValue;
+		};
+		std::vector<FrameResources> m_frames;
+		std::uint64_t frameIndex{};
 
 		int m_RtvDescriptorSize;
 		int m_DsvDescriptorSize;
@@ -111,8 +136,6 @@ namespace sisskey
 			if (fullscreen)
 				m_pSwapChain->SetFullscreenState(FALSE, nullptr);
 			m_FlushCommandQueue();
-			if(m_CopyFenceEvent != INVALID_HANDLE_VALUE)
-				CloseHandle(m_CopyFenceEvent);
 		}
 
 		void Begin(/*clear value*/) final;
