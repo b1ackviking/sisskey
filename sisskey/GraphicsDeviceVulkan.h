@@ -41,11 +41,31 @@ namespace sisskey
 		std::vector<Graphics::buffer> m_copyBuffers;
 		std::mutex m_copyMutex;
 		
-		vk::UniqueCommandPool m_pool;
-		std::vector<vk::UniqueCommandBuffer> m_cmd;
-		vk::UniqueFence m_fence;
 		vk::UniqueSemaphore m_imageSemaphore; // TODO: allow interleaved frames
 		vk::UniqueSemaphore m_renderSemaphore;
+
+		struct FrameResources
+		{
+			vk::UniqueCommandPool CommandPool;
+			vk::UniqueCommandBuffer CommandBuffer;
+			vk::UniqueFence FrameFence;
+
+			FrameResources(vk::Device device, std::uint32_t graphicsFamily)
+			{
+				vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsFamily };
+				CommandPool = device.createCommandPoolUnique(poolInfo);
+
+				vk::CommandBufferAllocateInfo cmdInfo{ CommandPool.get(), vk::CommandBufferLevel::ePrimary, 1 };
+				auto cmd = device.allocateCommandBuffersUnique(cmdInfo);
+				CommandBuffer = std::move(cmd[0]);
+
+				FrameFence = device.createFenceUnique({});
+				device.resetFences(FrameFence.get());
+			}
+		};
+		std::vector<FrameResources> m_frames;
+		std::uint64_t frameIndex{};
+		std::uint32_t m_swapchainImageCount{};
 
 		void m_SetWidthHeight(); // TODO: should this be in a base class ??
 		void m_CreateInstance();
@@ -104,6 +124,7 @@ namespace sisskey
 
 		vk::UniqueRenderPass m_rp;
 
+		// TODO: move to FrameResources
 		std::vector<vk::UniqueFramebuffer> m_fb;
 
 		std::uint32_t m_currentBackBuffer;

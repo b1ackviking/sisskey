@@ -161,6 +161,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	auto heap = gd->CreateDescriptorHeap({ range }, 1);
 
 	auto ds = gd->CreateDescriptorSets(heap, { dsl });
+	gd->BindConstantBuffer(0, 0, ds[0], ConstBuf);
 
 	auto pl = gd->CreatePipelineLayout({ dsl });
 	gpd.pl = pl;
@@ -179,7 +180,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 		gd->BindDescriptorSet(0, ds[0], pl);
 		gd->BindViewports({ vp });
 		gd->BindScissorRects({ sr });
-		gd->BindConstantBuffer(0, 0, ds[0], ConstBuf);
 		gd->BindVertexBuffers(0, { vb }, { 0 }, { sizeof(Vertex) });
 		gd->BindIndexBuffer(ib, 0, sisskey::Graphics::INDEXBUFFER_FORMAT::UINT16);
 		gd->DrawIndexed(static_cast<std::uint32_t>(indices.size()), 0, 0);

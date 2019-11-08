@@ -666,6 +666,7 @@ namespace sisskey
 		m_SwapChainImages = m_device->getSwapchainImagesKHR(m_swapchain.get());
 		assert(m_SwapChainImages.size() >= m_BackBufferCount); // Vulkan creates AT LEAST minImageCount images
 
+		m_swapchainImageCount = static_cast<std::uint32_t>(m_SwapChainImages.size());
 		m_SwapChainImageFormat = SurfaceFormat.format;
 
 		// explicitly delete old image views in case swapchain is recreated
@@ -840,19 +841,13 @@ namespace sisskey
 		m_CreateRenderPass();
 		m_CreateFrameBuffers();
 
-		m_fence = m_device->createFenceUnique({});
-		m_device->resetFences(m_fence.get());
-
 		m_imageSemaphore = m_device->createSemaphoreUnique({});
 		m_renderSemaphore = m_device->createSemaphoreUnique({});
 
-		{
-			vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.GraphicsQueue->first };
-			m_pool = m_device->createCommandPoolUnique(poolInfo);
+		// Create FrameResources
+		for (std::uint32_t i{}; i < m_swapchainImageCount; ++i)
+			m_frames.emplace_back(m_device.get(), m_QueueFamilyIndices.GraphicsQueue->first);
 
-			vk::CommandBufferAllocateInfo cmdInfo{ m_pool.get(), vk::CommandBufferLevel::ePrimary, 1 };
-			m_cmd = m_device->allocateCommandBuffersUnique(cmdInfo);
-		}
 		{
 			vk::CommandPoolCreateInfo poolInfo{ vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer, m_QueueFamilyIndices.CopyQueue->first };
 			m_copyPool = m_device->createCommandPoolUnique(poolInfo);
@@ -881,16 +876,16 @@ namespace sisskey
 
 	void GraphicsDeviceVulkan::Begin()
 	{
-		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), vk::Semaphore{}, m_fence.get());
-		m_device->waitForFences(m_fence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
-		m_device->resetFences(m_fence.get());
+		auto imageIndex = m_device->acquireNextImageKHR(m_swapchain.get(), std::numeric_limits<std::uint64_t>::max(), m_imageSemaphore.get(), vk::Fence{});
 
 		m_currentBackBuffer = imageIndex.value;
 
-		// TODO: interleaved frames
-		m_GraphicsQueue.waitIdle(); // wait for previous frame
 		vk::CommandBufferBeginInfo begin{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-		m_cmd[0]->begin(begin);
+
+		auto& fr = m_frames[++frameIndex % m_swapchainImageCount];
+		m_device->waitForFences(fr.FrameFence.get(), VK_TRUE, std::numeric_limits<std::uint64_t>::max());
+		m_device->resetFences(fr.FrameFence.get());
+		fr.CommandBuffer->begin(begin);
 
 		std::array<vk::ClearValue, 2> cv{};
 		// const float* c = DirectX::Colors::LightSteelBlue;
@@ -908,13 +903,14 @@ namespace sisskey
 		vk::RenderPassBeginInfo rpBegin{ m_rp.get(), m_fb[imageIndex.value].get(),
 										{ { 0, 0 }, { m_SwapChainExtent.width, m_SwapChainExtent.height } },
 										static_cast<std::uint32_t>(cv.size()), cv.data() };
-		m_cmd[0]->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
+		fr.CommandBuffer->beginRenderPass(rpBegin, vk::SubpassContents::eInline);
 	}
 
 	void GraphicsDeviceVulkan::End()
 	{
-		m_cmd[0]->endRenderPass();
-		m_cmd[0]->end();
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->endRenderPass();
+		fr.CommandBuffer->end();
 
 		// Copy resources
 		{
@@ -942,14 +938,17 @@ namespace sisskey
 			m_copyBuffers.clear();
 		}
 
-		std::vector<vk::CommandBuffer> v;
-		std::transform(m_cmd.begin(), m_cmd.end(), std::back_inserter(v), [](const vk::UniqueCommandBuffer& cb) { return cb.get(); });
+		std::vector<vk::CommandBuffer> v{ fr.CommandBuffer.get() };
 		vk::SubmitInfo submit{};
 		submit.commandBufferCount = static_cast<std::uint32_t>(v.size());
 		submit.pCommandBuffers = v.data();
+		submit.waitSemaphoreCount = 1;
+		submit.pWaitSemaphores = &m_imageSemaphore.get();
+		vk::PipelineStageFlags waitMask[]{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
+		submit.pWaitDstStageMask = waitMask;
 		submit.signalSemaphoreCount = 1;
 		submit.pSignalSemaphores = &m_renderSemaphore.get();
-		m_GraphicsQueue.submit(submit, vk::Fence{});
+		m_GraphicsQueue.submit(submit, fr.FrameFence.get());
 
 		vk::PresentInfoKHR presentInfo{ 1, &m_renderSemaphore.get(), 1, &m_swapchain.get(), &m_currentBackBuffer };
 		m_PresentQueue.presentKHR(presentInfo);
@@ -957,7 +956,8 @@ namespace sisskey
 
 	void GraphicsDeviceVulkan::BindPipeline(Graphics::PipelineHandle pipeline)
 	{
-		m_cmd[0]->bindPipeline(vk::PipelineBindPoint::eGraphics, { reinterpret_cast<VkPipeline>(pipeline.ph) });
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, { reinterpret_cast<VkPipeline>(pipeline.ph) });
 	}
 
 	void GraphicsDeviceVulkan::BindVertexBuffers(std::uint32_t start, const std::vector<Graphics::buffer>& buffers, const std::vector<std::uint64_t>& offsets, const std::vector<std::uint32_t>&)
@@ -973,14 +973,17 @@ namespace sisskey
 					   });
 		std::transform(offsets.begin(), offsets.end(), of.begin(), [](const auto& o) -> vk::DeviceSize { return o; });
 
-		m_cmd[0]->bindVertexBuffers(start, vb, of);
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->bindVertexBuffers(start, vb, of);
 	}
 
 	void GraphicsDeviceVulkan::BindViewports(const std::vector<Graphics::Viewport>& viewports)
 	{
 		std::vector<vk::Viewport> vp(viewports.size());
 		std::transform(viewports.begin(), viewports.end(), vp.begin(), Graphics::VK_Viewport);
-		m_cmd[0]->setViewport(0, vp);
+
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->setViewport(0, vp);
 	}
 
 	void GraphicsDeviceVulkan::BindScissorRects(const std::vector<Graphics::Rect>& scissors)
@@ -995,23 +998,28 @@ namespace sisskey
 									{ static_cast<std::uint32_t>(r.right - r.left), static_cast<std::uint32_t>(r.bottom - r.top) }
 								  };
 					   });
-		m_cmd[0]->setScissor(0, rc);
+
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->setScissor(0, rc);
 	}
 
 	void sisskey::GraphicsDeviceVulkan::BindIndexBuffer(const Graphics::buffer& indexBuffer, std::uint64_t offsest, Graphics::INDEXBUFFER_FORMAT format)
 	{
-		m_cmd[0]->bindIndexBuffer(reinterpret_cast<VkBuffer>(indexBuffer.resource), offsest,
-								  format == Graphics::INDEXBUFFER_FORMAT::UINT16 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->bindIndexBuffer(reinterpret_cast<VkBuffer>(indexBuffer.resource), offsest,
+										  format == Graphics::INDEXBUFFER_FORMAT::UINT16 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 	}
 
 	void GraphicsDeviceVulkan::Draw(std::uint32_t count, std::uint32_t start)
 	{
-		m_cmd[0]->draw(count, 1, start, 0);
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->draw(count, 1, start, 0);
 	}
 
 	void sisskey::GraphicsDeviceVulkan::DrawIndexed(std::uint32_t count, std::uint32_t startVertex, std::uint32_t startIndex)
 	{
-		m_cmd[0]->drawIndexed(count, 1, startIndex, startVertex, 0);
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->drawIndexed(count, 1, startIndex, startVertex, 0);
 	}
 
 	Graphics::PipelineHandle GraphicsDeviceVulkan::CreateGraphicsPipeline(Graphics::GraphicsPipelineDesc& desc)
@@ -1444,6 +1452,8 @@ namespace sisskey
 	{
 		auto layout = vk::PipelineLayout{ reinterpret_cast<VkPipelineLayout>(pl) };
 		auto set = vk::DescriptorSet{ reinterpret_cast<VkDescriptorSet>(ds.cpu) };
-		m_cmd[0]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, layout, 0, set, {});
+
+		auto& fr = m_frames[frameIndex % m_swapchainImageCount];
+		fr.CommandBuffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, layout, 0, set, {});
 	}
 }
