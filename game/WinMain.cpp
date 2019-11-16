@@ -75,8 +75,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	engine.Initialize();
 
 	auto w = sisskey::Window::Create();
-	//auto gd = sisskey::GraphicsDevice::Create(w);
-	auto gd = sisskey::GraphicsDevice::Create(w, sisskey::GraphicsDevice::PresentMode::Windowed, sisskey::GraphicsDevice::API::DX12);
+	//auto gd = sisskey::GraphicsDevice::CreateVulkan(w);
+	auto gd = sisskey::GraphicsDevice::CreateDX12(w);
 	
 	
 	struct Vertex
@@ -131,6 +131,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 	cb.WVP = DirectX::XMMatrixIdentity() * DirectX::XMMatrixScaling(.5f, .5f, .5f) * DirectX::XMMatrixRotationZ(DirectX::XM_PIDIV4);
 	sisskey::Graphics::GPUBufferDesc cbd;
 	cbd.BindFlags = sisskey::Graphics::BIND_FLAG::CONSTANT_BUFFER;
+	cbd.Usage = sisskey::Graphics::USAGE::DYNAMIC;
 	cbd.ByteWidth = sizeof(ConstantBuffer);
 	sisskey::Graphics::SubresourceData cdata;
 	cdata.pSysMem = &cb;

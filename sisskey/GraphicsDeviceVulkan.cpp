@@ -491,7 +491,7 @@ namespace sisskey
 	void GraphicsDeviceVulkan::m_SetWidthHeight()
 	{
 		auto [w, h] = m_pWindow->GetSize();
-		if (m_PresentMode != PresentMode::Windowed)
+		if (m_PresentMode != Graphics::PresentMode::Windowed)
 		{
 			auto dms = m_pWindow->EnumDisplayModes();
 
@@ -827,7 +827,7 @@ namespace sisskey
 		return BestMode;
 	}
 
-	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode)
+	GraphicsDeviceVulkan::GraphicsDeviceVulkan(std::shared_ptr<Window> window, Graphics::PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
 		m_SetWidthHeight(); // NOTE: it is important to set width and height of the window before creating surface
@@ -1283,7 +1283,7 @@ namespace sisskey
 		vk::BufferCreateInfo bufferInfo{ {}, desc.ByteWidth, usage };
 		VkBufferCreateInfo bi = static_cast<VkBufferCreateInfo>(bufferInfo);
 
-		if (desc.Usage == Graphics::USAGE::DYNAMIC) // or if (desc.BindFlags == Graphics::BIND_FLAG::CONSTANT_BUFFER) ??
+		if (desc.Usage == Graphics::USAGE::DYNAMIC && desc.BindFlags == Graphics::BIND_FLAG::CONSTANT_BUFFER)
 		{
 			VmaAllocationCreateInfo allocInfo{};
 			allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
@@ -1417,8 +1417,10 @@ namespace sisskey
 	
 	void sisskey::GraphicsDeviceVulkan::BindConstantBuffer(std::uint32_t range, std::uint32_t index, Graphics::DescriptorSet set, Graphics::buffer cb)
 	{
+		VmaAllocationInfo info{};
+		vmaGetAllocationInfo(m_vma, reinterpret_cast<VmaAllocation>(cb.allocation), &info);
 		// TODO: broken
-		vk::DescriptorBufferInfo dbi{ { reinterpret_cast<VkBuffer>(cb.resource) }, 0, VK_WHOLE_SIZE };
+		vk::DescriptorBufferInfo dbi{ { reinterpret_cast<VkBuffer>(cb.resource) }, 0, info.size };
 
 		vk::WriteDescriptorSet write{ { reinterpret_cast<VkDescriptorSet>(set.cpu) }, 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &dbi };
 

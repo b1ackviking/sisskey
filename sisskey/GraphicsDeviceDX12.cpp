@@ -519,7 +519,7 @@ namespace sisskey
 		return ret;
 	}
 
-	GraphicsDeviceDX12::GraphicsDeviceDX12(std::shared_ptr<Window> window, PresentMode mode)
+	GraphicsDeviceDX12::GraphicsDeviceDX12(std::shared_ptr<Window> window, Graphics::PresentMode mode)
 		: GraphicsDevice(window, mode)
 	{
 #ifndef NDEBUG
@@ -605,6 +605,7 @@ namespace sisskey
 		m_RtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		m_DsvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 		m_CbvSrvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		m_SamplerDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 		// Check 4xMSAA support
 		D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msQualityLevels;
@@ -782,7 +783,7 @@ namespace sisskey
 		// swap the back and front buffers
 		UINT SyncInterval{ m_VSync ? 1u : 0u };
 		// https://docs.microsoft.com/ru-ru/windows/win32/direct3ddxgi/dxgi-present
-		UINT Flags{ !m_VSync && m_TearingSupport && m_PresentMode != PresentMode::Fullscreen ? DXGI_PRESENT_ALLOW_TEARING : 0u }; // Note: VFR is not allowed in fullscreen mode
+		UINT Flags{ !m_VSync && m_TearingSupport && m_PresentMode != Graphics::PresentMode::Fullscreen ? DXGI_PRESENT_ALLOW_TEARING : 0u }; // Note: VFR is not allowed in fullscreen mode
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present
 		ThrowIfFailed(m_pSwapChain->Present(SyncInterval, Flags));
 
@@ -998,6 +999,9 @@ namespace sisskey
 
 	Graphics::buffer GraphicsDeviceDX12::CreateBuffer(Graphics::GPUBufferDesc& desc, std::optional<Graphics::SubresourceData> initData)
 	{
+		ID3D12Resource* buffer;
+		D3D12MA::Allocation* a;
+
 		std::uint32_t alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
 		if (desc.BindFlags & Graphics::BIND_FLAG::CONSTANT_BUFFER)
 			alignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
@@ -1009,37 +1013,53 @@ namespace sisskey
 		};
 		UINT64 alignedSize = AlignHelper(desc.ByteWidth, alignment);
 
-		// TODO: constant buffers
-		D3D12MA::ALLOCATION_DESC allocDesc{};
-		allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
-		D3D12MA::Allocation* a;
-		ID3D12Resource* buffer;
-		ThrowIfFailed(m_d3dma->CreateResource(&allocDesc,
-											  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize, desc.BindFlags & Graphics::BIND_FLAG::UNORDERED_ACCESS ?
-																			 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
-											  D3D12_RESOURCE_STATE_COMMON, nullptr, &a, IID_PPV_ARGS(&buffer)));
-
-		if (initData)
+		if (desc.Usage == Graphics::USAGE::DYNAMIC && desc.BindFlags == Graphics::BIND_FLAG::CONSTANT_BUFFER)
 		{
-			ID3D12Resource* uploadBuffer;
-			D3D12MA::Allocation* uploadAllocation;
+			D3D12MA::ALLOCATION_DESC allocDesc{};
+			allocDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
 
-			D3D12MA::ALLOCATION_DESC uploadAllocDesc{};
-			uploadAllocDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
-			ThrowIfFailed(m_d3dma->CreateResource(&uploadAllocDesc,
-												  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize),
-												  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &uploadAllocation, IID_PPV_ARGS(&uploadBuffer)));
+			ThrowIfFailed(m_d3dma->CreateResource(&allocDesc,
+												  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize, D3D12_RESOURCE_FLAG_NONE),
+												  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &a, IID_PPV_ARGS(&buffer)));
+			if (initData)
+			{
+				void* data;
+				buffer->Map(0, nullptr, &data);
+				std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+				buffer->Unmap(0, nullptr);
+			}
+		}
+		else
+		{
+			D3D12MA::ALLOCATION_DESC allocDesc{};
+			allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+			ThrowIfFailed(m_d3dma->CreateResource(&allocDesc,
+												  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize, desc.BindFlags & Graphics::BIND_FLAG::UNORDERED_ACCESS ?
+																				 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+												  D3D12_RESOURCE_STATE_COMMON, nullptr, &a, IID_PPV_ARGS(&buffer)));
 
-			m_copyBuffers.push_back({ reinterpret_cast<Graphics::handle>(uploadBuffer), reinterpret_cast<Graphics::handle>(uploadAllocation) });
+			if (initData)
+			{
+				ID3D12Resource* uploadBuffer;
+				D3D12MA::Allocation* uploadAllocation;
 
-			void* data;
-			uploadBuffer->Map(0, nullptr, &data);
-			std::memcpy(data, initData->pSysMem, desc.ByteWidth);
-			uploadBuffer->Unmap(0, nullptr);
+				D3D12MA::ALLOCATION_DESC uploadAllocDesc{};
+				uploadAllocDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+				ThrowIfFailed(m_d3dma->CreateResource(&uploadAllocDesc,
+													  &CD3DX12_RESOURCE_DESC::Buffer(alignedSize),
+													  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, &uploadAllocation, IID_PPV_ARGS(&uploadBuffer)));
 
-			std::lock_guard l{ m_CopyMutex };
-			m_pCopyCommandList->CopyResource(buffer, uploadBuffer);
-			//m_pCopyCommandList->CopyBufferRegion(buffer, 0, uploadBuffer, 0, desc.ByteWidth);
+				m_copyBuffers.push_back({ reinterpret_cast<Graphics::handle>(uploadBuffer), reinterpret_cast<Graphics::handle>(uploadAllocation) });
+
+				void* data;
+				uploadBuffer->Map(0, nullptr, &data);
+				std::memcpy(data, initData->pSysMem, desc.ByteWidth);
+				uploadBuffer->Unmap(0, nullptr);
+
+				std::lock_guard l{ m_CopyMutex };
+				m_pCopyCommandList->CopyResource(buffer, uploadBuffer);
+				//m_pCopyCommandList->CopyBufferRegion(buffer, 0, uploadBuffer, 0, desc.ByteWidth);
+			}
 		}
 
 		return { reinterpret_cast<Graphics::handle>(buffer), reinterpret_cast<Graphics::handle>(a) };
@@ -1132,9 +1152,8 @@ namespace sisskey
 	{
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvd;
 		cbvd.BufferLocation = reinterpret_cast<ID3D12Resource*>(cb.resource)->GetGPUVirtualAddress();
-		cbvd.SizeInBytes = 256;// static_cast<UINT>(reinterpret_cast<D3D12MA::Allocation*>(cb.allocation)->GetSize());
+		cbvd.SizeInBytes = static_cast<UINT>(reinterpret_cast<ID3D12Resource*>(cb.resource)->GetDesc().Width);
 
-		// TODO: broken
 		m_pDevice->CreateConstantBufferView(&cbvd, { set.cpu });
 	}
 
@@ -1341,7 +1360,7 @@ namespace sisskey
 			ThrowIfFailed(output->FindClosestMatchingMode(&in, &out, nullptr));
 
 			// use new dimentions
-			if (m_PresentMode != PresentMode::Windowed)
+			if (m_PresentMode != Graphics::PresentMode::Windowed)
 			{
 				m_Width = out.Width;
 				m_Height = out.Height;
@@ -1364,7 +1383,6 @@ namespace sisskey
 
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_swap_chain_desc1
 		DXGI_SWAP_CHAIN_DESC1 sd;
-		// 0 means "use window dimentions"
 		sd.Width = m_Width;
 		sd.Height = m_Height;
 		// Note: the only supported formats with DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL are:
@@ -1379,7 +1397,6 @@ namespace sisskey
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_scaling
 		sd.Scaling = DXGI_SCALING_STRETCH;
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_effect
-		//sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; // TODO: difference?
 		sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 		// https://docs.microsoft.com/ru-ru/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_alpha_mode
 		sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
@@ -1403,11 +1420,13 @@ namespace sisskey
 		fsd.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 		// https://docs.microsoft.com/ru-ru/previous-versions/windows/desktop/legacy/bb173066(v=vs.85)
 		fsd.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-		fsd.Windowed = m_PresentMode != PresentMode::Fullscreen ? TRUE : FALSE;
+		fsd.Windowed = m_PresentMode != Graphics::PresentMode::Fullscreen ? TRUE : FALSE;
 
 		// https://docs.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgifactory2-createswapchainforhwnd
 		Microsoft::WRL::ComPtr<IDXGISwapChain1> sc;
 		ThrowIfFailed(m_pFactory->CreateSwapChainForHwnd(m_pCommandQueue.Get(), hWnd, &sd, &fsd, nullptr /* TODO: restrict to output?? */, &sc));
 		ThrowIfFailed(sc.As(&m_pSwapChain));
+
+		ThrowIfFailed(m_pFactory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 	}
 }

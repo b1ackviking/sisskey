@@ -37,6 +37,13 @@ namespace sisskey::Graphics
 
 	struct Texture;
 
+	enum class PresentMode
+	{
+		Windowed,
+		Borderless,
+		Fullscreen
+	};
+
 	enum class DESCRIPTOR_TYPE
 	{
 		CBV,

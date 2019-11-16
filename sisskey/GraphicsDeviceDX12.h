@@ -107,9 +107,10 @@ namespace sisskey
 		std::vector<FrameResources> m_frames;
 		std::uint64_t frameIndex{};
 
-		int m_RtvDescriptorSize;
-		int m_DsvDescriptorSize;
-		int m_CbvSrvDescriptorSize;
+		UINT m_RtvDescriptorSize;
+		UINT m_DsvDescriptorSize;
+		UINT m_CbvSrvDescriptorSize;
+		UINT m_SamplerDescriptorSize;
 		UINT m_4xMsaaQuality;
 
 		UINT64 m_CurrentFence{};
@@ -128,7 +129,7 @@ namespace sisskey
 		[[nodiscard]] Microsoft::WRL::ComPtr<IDXGIAdapter4> m_GetAdapter();
 
 	public:
-		GraphicsDeviceDX12(std::shared_ptr<Window> window, PresentMode mode);
+		GraphicsDeviceDX12(std::shared_ptr<Window> window, Graphics::PresentMode mode);
 		~GraphicsDeviceDX12()
 		{
 			BOOL fullscreen;

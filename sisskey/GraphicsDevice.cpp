@@ -10,13 +10,17 @@
 
 namespace sisskey
 {
-	std::unique_ptr<GraphicsDevice> GraphicsDevice::Create(std::shared_ptr<Window> window, PresentMode mode, API api)
+	std::unique_ptr<GraphicsDevice> GraphicsDevice::CreateDX12(std::shared_ptr<Window> window, Graphics::PresentMode mode)
 	{
 		assert(window);
 #ifdef _WIN64
-		if (api == API::DX12)
-			return std::make_unique<GraphicsDeviceDX12>(window, mode);
+		return std::make_unique<GraphicsDeviceDX12>(window, mode);
 #endif
+		return {};
+	}
+
+	std::unique_ptr<GraphicsDevice> GraphicsDevice::CreateVulkan(std::shared_ptr<Window> window, Graphics::PresentMode mode)
+	{
 		return std::make_unique<GraphicsDeviceVulkan>(window, mode);
 	}
 

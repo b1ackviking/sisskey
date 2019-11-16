@@ -143,7 +143,7 @@ namespace sisskey
 
 
 	public:
-		GraphicsDeviceVulkan(std::shared_ptr<Window> window, PresentMode mode);
+		GraphicsDeviceVulkan(std::shared_ptr<Window> window, Graphics::PresentMode mode);
 		~GraphicsDeviceVulkan();
 
 		void Begin(/*clear value*/) final;
