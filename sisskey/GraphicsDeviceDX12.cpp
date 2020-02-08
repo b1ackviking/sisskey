@@ -1205,7 +1205,7 @@ namespace sisskey
 		// Wait until the GPU has completed commands up to this fence point.
 		if (m_pFrameFence->GetCompletedValue() < m_CurrentFence)
 		{
-			if (HANDLE eventHandle = CreateEventExW(nullptr, false, false, EVENT_ALL_ACCESS); eventHandle)
+			if (HANDLE eventHandle = CreateEventExW(nullptr, nullptr, 0, EVENT_ALL_ACCESS); eventHandle)
 			{
 				// Fire event when GPU hits current fence. 
 				ThrowIfFailed(m_pFrameFence->SetEventOnCompletion(m_CurrentFence, eventHandle));
